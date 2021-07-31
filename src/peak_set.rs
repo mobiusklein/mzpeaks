@@ -1,3 +1,17 @@
+//! Collections of peaks that are ordered and searchable by a coordinate,
+//! support fast access and are growable. While the main behaviors are provided
+//! through the [`PeakCollection`] generic trait, a (generic) full implementation
+//! is given by [`PeakSetVec`].
+//!
+//! The two basic peak types, [`CentroidPeak`](crate::peak::CentroidPeak) and
+//! [`DeconvolutedPeak`](crate::peak::DeconvolutedPeak) have fully specified
+//! aliases of [`PeakSetVec`], [`PeakSet`] and [`DeconvolutedPeakSet`],
+//! respectively.
+//!
+//! [`PeakCollection`] can be searched by its specified coordinate space, with
+//! [`PeakCollection::search`], [`PeakCollection::has_peak`], [`PeakCollection::all_peaks_for`],
+//! and [`PeakCollection::between`].
+//!
 use std::fmt;
 use std::iter::{Extend, FromIterator};
 use std::marker;
@@ -9,28 +23,44 @@ use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
 use crate::peak::{CentroidPeak, DeconvolutedPeak};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// When adding a peak to a [`PeakCollection`], indicate
+/// whether the addition required re-indexing the whole
+/// collection.
 pub enum OrderUpdateEvent {
+    /// No change was required, the new peak was added to the end
     TailAppend,
+    /// The collection was re-indexed, the addition occurred in the middle
+    /// of the collection
     InsertResorted,
 }
 
 /// A trait for an ordered container of mass spectral peaks. The trait
-/// interoperates with [`CoordinateLike`] to make searching efficient.
+/// interoperates with [`CoordinateLike`].
 pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize>
 where
     <Self as ops::Index<usize>>::Output: CoordinateLike<C>,
 {
+    /// Add `peak` to the collection, maintaining sort order and peak
+    /// indexing.
     fn push(&mut self, peak: T) -> OrderUpdateEvent;
+
+    /// Sort the collection, updating the peak indexing.
     fn sort(&mut self);
 
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Implement index access
     fn get_item(&self, i: usize) -> &T;
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
 
-    fn _search_by(&self, query: f64) -> Result<usize, usize>;
+    /// Most basic method for coordinate search, find the
+    /// index in this collection whose coordinate value is nearest
+    /// to `query`. The return signature is identical to
+    /// [`slice::binary_search_by`][slice::binary_search_by]
+    fn search_by(&self, query: f64) -> Result<usize, usize>;
 
     #[inline]
     fn _closest_peak(
@@ -74,15 +104,19 @@ where
     }
 
     #[inline]
+    /// Find the nearest index for `query` within `error_tolerance` units of `error_type` in
+    /// this peak collection, or `None`.
     fn search(&self, query: f64, error_tolerance: f64, error_type: MassErrorType) -> Option<usize> {
         let lower_bound = error_type.lower_bound(query, error_tolerance);
-        match self._search_by(lower_bound) {
+        match self.search_by(lower_bound) {
             Ok(j) => self._closest_peak(query, error_tolerance, j, error_type),
             Err(j) => self._closest_peak(query, error_tolerance, j, error_type),
         }
     }
 
     #[inline]
+    /// Return the peak nearest to `query` within `error_tolerance` units of `error_type` in
+    /// this peak collection, or `None`.
     fn has_peak(&self, query: f64, error_tolerance: f64, error_type: MassErrorType) -> Option<&T> {
         return match self.search(query, error_tolerance, error_type) {
             Some(j) => Some(self.get_item(j)),
@@ -91,6 +125,8 @@ where
     }
 
     #[inline]
+    /// Return a slice containing all peaks between `low` and `high` coordinates within
+    /// `error_tolerance` units of `error_type`.
     fn between(
         &self,
         low: f64,
@@ -132,8 +168,8 @@ where
         subset
     }
 
-    /// Find all peaks which could match `query` within the specified error tolerances,
     #[inline]
+    /// Find all peaks which could match `query` within `error_tolerance` units of `error_type`
     fn all_peaks_for(&self, query: f64, error_tolerance: f64, error_type: MassErrorType) -> &[T] {
         let lower_bound = error_type.lower_bound(query, error_tolerance);
         let upper_bound = error_type.upper_bound(query, error_tolerance);
@@ -169,6 +205,39 @@ where
         }
         return &self.get_slice(lower_index..upper_index + 1);
     }
+}
+
+// An experiment to implement traits with macros
+macro_rules! impl_slicing {
+    ($t:ty, $($args:tt)+) => {
+
+        impl<$($args)+> std::ops::Index<std::ops::Range<usize>> for $t {
+            type Output = [<Self as std::ops::Index<usize>>::Output];
+
+            fn index(&self, index: std::ops::Range<usize>) -> &Self::Output {
+                return self.get_slice(index)
+            }
+        }
+
+        impl<$($args)+> std::ops::Index<std::ops::RangeFrom<usize>> for $t {
+            type Output = [<Self as std::ops::Index<usize>>::Output];
+
+            fn index(&self, index: std::ops::RangeFrom<usize>) -> &Self::Output {
+                let idx = std::ops::Range { start: index.start, end: self.len() };
+                <Self as std::ops::Index<std::ops::Range<usize>>>::index(self, idx)
+            }
+        }
+
+        impl<$($args)+> std::ops::Index<std::ops::RangeTo<usize>> for $t {
+            type Output = [<Self as std::ops::Index<usize>>::Output];
+
+            fn index(&self, index: std::ops::RangeTo<usize>) -> &Self::Output {
+                let idx = std::ops::Range { start: 0, end: index.end };
+                <Self as std::ops::Index<std::ops::Range<usize>>>::index(self, idx)
+            }
+        }
+
+    };
 }
 
 /// Represent a sorted list of processed mass spectral peaks. It is a
@@ -283,7 +352,7 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
     }
 
     #[inline]
-    fn _search_by(&self, query: f64) -> Result<usize, usize> {
+    fn search_by(&self, query: f64) -> Result<usize, usize> {
         self.peaks
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
@@ -302,6 +371,8 @@ impl<P: IndexedCoordinate<C>, C> ops::IndexMut<usize> for PeakSetVec<P, C> {
         &mut self.peaks[index]
     }
 }
+
+impl_slicing!(PeakSetVec<P, C>, P: IndexedCoordinate<C>, C);
 
 impl<P: IndexedCoordinate<C>, C> fmt::Display for PeakSetVec<P, C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -350,7 +421,7 @@ impl<P: IndexedCoordinate<C>, C> Extend<P> for PeakSetVec<P, C> {
         }
         if valid {
             for i in last_index..self.len() {
-                self[i].set_index(i as u32);
+                self[i].set_index(i as IndexType);
             }
         } else {
             self.sort()
@@ -376,10 +447,9 @@ impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &'a mut PeakSetVec<P, C> {
     }
 }
 
-/// Iterators
+// ---- Iterators -----
 
-// Reference Iterator
-
+/// Reference Iterator over [`PeakSetVec`]
 pub struct PeakSetIter<'a, P, C> {
     iter: std::slice::Iter<'a, P>,
     phantom: marker::PhantomData<C>,
@@ -402,8 +472,7 @@ impl<'a, P: IndexedCoordinate<C>, C> Iterator for PeakSetIter<'a, P, C> {
     }
 }
 
-// Mutable Reference Iterator
-
+/// Mutable Reference Iterator over [`PeakSetVec`]
 pub struct PeakSetIterMut<'a, P, C> {
     iter: std::slice::IterMut<'a, P>,
     phantom: marker::PhantomData<C>,
@@ -426,10 +495,20 @@ impl<'a, P, C> Iterator for PeakSetIterMut<'a, P, C> {
     }
 }
 
+/// A [`PeakSetVec`] of [`CentroidPeak`](crate::peak::CentroidPeak) items
+/// ordered by m/z
 pub type PeakSet = PeakSetVec<CentroidPeak, MZ>;
+
+/// A [`PeakSetVec`] of [`DeconvolutedPeak`](crate::peak::DeconvolutedPeak) items
+/// ordered by neutral mass
 pub type DeconvolutedPeakSet = PeakSetVec<DeconvolutedPeak, Mass>;
 
+/// A partial specialization of [`PeakSetVec`] that requires that the ordering
+/// coordinate is m/z
 pub type MZPeakSetType<P> = PeakSetVec<P, MZ>;
+
+/// A partial specialization of [`PeakSetVec`] that requires that the ordering
+/// coordinate is neutral mass
 pub type MassPeakSetType<D> = PeakSetVec<D, Mass>;
 
 #[cfg(test)]

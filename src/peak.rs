@@ -1,13 +1,23 @@
+//! A peak is the most atomic unit of a (processed) mass spectrum. It represents
+//! a location in one (or more) coordinate spaces with an measured intensity value
+//!
+//! All peak-like types implement [`PartialEq`], [`PartialOrd`], and [`CoordinateLike`]
+//!
+
 use std::cmp;
 use std::fmt;
 use std::hash;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
 
+/// An intensity measurement is an entity that has a measured intensity
+/// of whateger it is.
 pub trait IntensityMeasurement {
     fn intensity(&self) -> f32;
 }
 
+/// A [`CentroidLike`] entity is indexed in m/z coordinate space and
+/// is an [`IntensityMeasurement`]
 pub trait CentroidLike: IndexedCoordinate<MZ> + IntensityMeasurement {
     fn as_centroid(&self) -> CentroidPeak {
         CentroidPeak {
@@ -18,10 +28,15 @@ pub trait CentroidLike: IndexedCoordinate<MZ> + IntensityMeasurement {
     }
 }
 
+/// A known charge has a determined charge state value
 pub trait KnownCharge {
     fn charge(&self) -> i32;
 }
 
+/// A [`DeconvolutedCentroid`] entity is indexed in the neutral mass
+/// coordiante space, has known charge state and an aggregated intensity
+/// measurement. Any [`DeconvolutedCentroid`] can be converted into
+/// a [`DeconvolutedPeak`]
 pub trait DeconvolutedCentroid:
     IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge
 {
@@ -43,6 +58,16 @@ pub struct CentroidPeak {
     pub mz: f64,
     pub intensity: f32,
     pub index: IndexType,
+}
+
+impl CentroidPeak {
+    pub fn new(mz: f64, intensity: f32, index: IndexType) -> CentroidPeak {
+        CentroidPeak {
+            mz,
+            intensity,
+            index,
+        }
+    }
 }
 
 impl fmt::Display for CentroidPeak {
@@ -199,3 +224,69 @@ impl KnownCharge for DeconvolutedPeak {
 }
 
 impl<T: IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge> DeconvolutedCentroid for T {}
+
+#[derive(Debug, Clone, Default)]
+pub struct MZPoint {
+    pub mz: f64,
+    pub intensity: f32,
+}
+
+impl MZPoint {
+    pub fn new(mz: f64, intensity: f32) -> MZPoint {
+        MZPoint { mz, intensity }
+    }
+}
+
+impl<T: CentroidLike> cmp::PartialOrd<T> for MZPoint {
+    #[inline]
+    fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
+        self.mz.partial_cmp(&other.coordinate())
+    }
+}
+
+impl<T: CentroidLike> cmp::PartialEq<T> for MZPoint {
+    #[inline]
+    fn eq(&self, other: &T) -> bool {
+        if (self.mz - other.coordinate()).abs() > 1e-3
+            || (self.intensity - other.intensity()).abs() > 1e-3
+        {
+            return false;
+        }
+        true
+    }
+}
+
+impl CoordinateLike<MZ> for MZPoint {
+    fn coordinate(&self) -> f64 {
+        self.mz
+    }
+}
+
+impl IndexedCoordinate<MZ> for MZPoint {
+    fn get_index(&self) -> IndexType {
+        0
+    }
+
+    fn set_index(&mut self, _index: IndexType) {}
+}
+
+impl IntensityMeasurement for MZPoint {
+    fn intensity(&self) -> f32 {
+        self.intensity
+    }
+}
+
+impl From<MZPoint> for CentroidPeak {
+    fn from(peak: MZPoint) -> Self {
+        peak.as_centroid()
+    }
+}
+
+impl From<CentroidPeak> for MZPoint {
+    fn from(peak: CentroidPeak) -> Self {
+        Self {
+            mz: peak.coordinate(),
+            intensity: peak.intensity(),
+        }
+    }
+}

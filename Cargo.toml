@@ -2,6 +2,19 @@
 name = "mzpeaks"
 version = "0.1.0"
 edition = "2018"
+keywords = [
+    'mass-spectrometry',
+]
+
+categories = [
+    "science",
+    "data-structures"
+]
+
+description = "A library representing peaks in mass spectrometry data"
+license = "Apache-2.0"
+repository = "https://github.com/mobiusklein/mzpeaks"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
