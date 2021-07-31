@@ -21,7 +21,7 @@
 //! };
 //!
 //! assert!((peak.mz - 204.07).abs() < 1e-6);
-//!
+//!```
 
 pub mod coordinate;
 pub mod mass_error;
