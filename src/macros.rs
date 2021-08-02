@@ -11,7 +11,7 @@ macro_rules! implement_mz_coord {
             }
         }
 
-        impl<T: crate::CentroidLike> PartialEq<T> for $t {
+        impl<T: $crate::CentroidLike> PartialEq<T> for $t {
             #[inline]
             fn eq(&self, other: &T) -> bool {
                 if (self.mz - other.coordinate()).abs() > 1e-3
@@ -23,7 +23,7 @@ macro_rules! implement_mz_coord {
             }
         }
 
-        impl<T: crate::CentroidLike> cmp::PartialOrd<T> for $t {
+        impl<T: $crate::CentroidLike> cmp::PartialOrd<T> for $t {
             #[inline]
             fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
                 self.mz.partial_cmp(&other.coordinate())
@@ -61,7 +61,7 @@ macro_rules! implement_mass_coord {
             }
         }
 
-        impl<T: crate::DeconvolutedCentroidLike> PartialEq<T> for $t {
+        impl<T: $crate::DeconvolutedCentroidLike> PartialEq<T> for $t {
             #[inline]
             fn eq(&self, other: &T) -> bool {
                 if self.charge != other.charge()
@@ -74,7 +74,7 @@ macro_rules! implement_mass_coord {
             }
         }
 
-        impl<T: crate::DeconvolutedCentroidLike> cmp::PartialOrd<T> for $t {
+        impl<T: $crate::DeconvolutedCentroidLike> cmp::PartialOrd<T> for $t {
             #[inline]
             fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
                 self.neutral_mass.partial_cmp(&other.coordinate())
