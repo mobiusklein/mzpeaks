@@ -495,6 +495,8 @@ impl<'a, P, C> Iterator for PeakSetIterMut<'a, P, C> {
     }
 }
 
+// ----- Specializations -----
+
 /// A [`PeakSetVec`] of [`CentroidPeak`](crate::peak::CentroidPeak) items
 /// ordered by m/z
 pub type PeakSet = PeakSetVec<CentroidPeak, MZ>;

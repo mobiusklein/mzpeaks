@@ -6,9 +6,11 @@
 
 use std::cmp;
 use std::fmt;
-use std::hash;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
+use crate::{
+    implement_centroidlike, implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner,
+};
 
 /// An intensity measurement is an entity that has a measured intensity
 /// of whateger it is.
@@ -33,11 +35,11 @@ pub trait KnownCharge {
     fn charge(&self) -> i32;
 }
 
-/// A [`DeconvolutedCentroid`] entity is indexed in the neutral mass
+/// A [`DeconvolutedCentroidLike`] entity is indexed in the neutral mass
 /// coordiante space, has known charge state and an aggregated intensity
-/// measurement. Any [`DeconvolutedCentroid`] can be converted into
+/// measurement. Any [`DeconvolutedCentroidLike`] can be converted into
 /// a [`DeconvolutedPeak`]
-pub trait DeconvolutedCentroid:
+pub trait DeconvolutedCentroidLike:
     IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge
 {
     fn as_centroid(&self) -> DeconvolutedPeak {
@@ -80,150 +82,14 @@ impl fmt::Display for CentroidPeak {
     }
 }
 
-impl hash::Hash for CentroidPeak {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        let mz_val: i64 = self.coordinate().round() as i64;
-        mz_val.hash(state);
-    }
-}
-
-impl<T: CentroidLike> cmp::PartialOrd<T> for CentroidPeak {
-    #[inline]
-    fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
-        self.mz.partial_cmp(&other.coordinate())
-    }
-}
-
-impl<T: CentroidLike> cmp::PartialEq<T> for CentroidPeak {
-    #[inline]
-    fn eq(&self, other: &T) -> bool {
-        if (self.mz - other.coordinate()).abs() > 1e-3
-            || (self.intensity - other.intensity()).abs() > 1e-3
-        {
-            return false;
-        }
-        true
-    }
-}
-
-impl CoordinateLike<MZ> for CentroidPeak {
-    #[inline]
-    fn coordinate(&self) -> f64 {
-        self.mz
-    }
-}
-
-impl IndexedCoordinate<MZ> for CentroidPeak {
-    #[inline]
-    fn get_index(&self) -> IndexType {
-        self.index
-    }
-
-    #[inline]
-    fn set_index(&mut self, index: IndexType) {
-        self.index = index;
-    }
-}
-
-impl IntensityMeasurement for CentroidPeak {
-    #[inline]
-    fn intensity(&self) -> f32 {
-        self.intensity
-    }
-}
+implement_centroidlike_inner!(CentroidPeak, true, false);
 
 impl<T: IndexedCoordinate<MZ> + IntensityMeasurement> CentroidLike for T {}
 
-#[derive(Default, Clone, Debug)]
-/// Represent a single neutral mass coordinate with an
-/// intensity, a known charge and an index.
-pub struct DeconvolutedPeak {
-    pub neutral_mass: f64,
-    pub intensity: f32,
-    pub charge: i32,
-    pub index: IndexType,
+impl<T: IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge> DeconvolutedCentroidLike
+    for T
+{
 }
-
-impl fmt::Display for DeconvolutedPeak {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "DeconvolutedPeak({}, {}, {}, {})",
-            self.neutral_mass, self.intensity, self.charge, self.index
-        )
-    }
-}
-
-impl hash::Hash for DeconvolutedPeak {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        let neutral_mass: i64 = self.neutral_mass.round() as i64;
-        neutral_mass.hash(state);
-    }
-}
-
-impl<T: DeconvolutedCentroid> cmp::PartialOrd<T> for DeconvolutedPeak {
-    #[inline]
-    fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
-        self.neutral_mass.partial_cmp(&other.coordinate())
-    }
-}
-
-impl<T: DeconvolutedCentroid> cmp::PartialEq<T> for DeconvolutedPeak {
-    #[inline]
-    fn eq(&self, other: &T) -> bool {
-        if (self.neutral_mass - other.coordinate()).abs() > 1e-3
-            || self.charge != other.charge()
-            || (self.intensity - other.intensity()).abs() > 1e-3
-        {
-            return false;
-        }
-        true
-    }
-}
-
-impl CoordinateLike<Mass> for DeconvolutedPeak {
-    #[inline]
-    fn coordinate(&self) -> f64 {
-        self.neutral_mass
-    }
-}
-
-impl IndexedCoordinate<Mass> for DeconvolutedPeak {
-    #[inline]
-    fn get_index(&self) -> IndexType {
-        self.index
-    }
-
-    #[inline]
-    fn set_index(&mut self, index: IndexType) {
-        self.index = index;
-    }
-}
-
-impl CoordinateLike<MZ> for DeconvolutedPeak {
-    #[inline]
-    fn coordinate(&self) -> f64 {
-        let charge_carrier: f64 = 1.007276;
-        let charge = self.charge as f64;
-        (self.neutral_mass - charge_carrier * charge) / charge
-    }
-}
-
-impl IntensityMeasurement for DeconvolutedPeak {
-    #[inline]
-    fn intensity(&self) -> f32 {
-        self.intensity
-    }
-}
-
-impl KnownCharge for DeconvolutedPeak {
-    #[inline]
-    fn charge(&self) -> i32 {
-        self.charge
-    }
-}
-
-impl<T: IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge> DeconvolutedCentroid for T {}
 
 #[derive(Debug, Clone, Default)]
 pub struct MZPoint {
@@ -237,56 +103,73 @@ impl MZPoint {
     }
 }
 
-impl<T: CentroidLike> cmp::PartialOrd<T> for MZPoint {
-    #[inline]
-    fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
-        self.mz.partial_cmp(&other.coordinate())
+implement_centroidlike!(MZPoint, false);
+
+#[derive(Default, Clone, Debug)]
+/// Represent a single neutral mass coordinate with an
+/// intensity, a known charge and an index.
+pub struct DeconvolutedPeak {
+    pub neutral_mass: f64,
+    pub intensity: f32,
+    pub charge: i32,
+    pub index: IndexType,
+}
+
+impl DeconvolutedPeak {
+    pub fn mz(&self) -> f64 {
+        let charge_carrier: f64 = 1.007276;
+        let charge = self.charge as f64;
+        (self.neutral_mass + charge_carrier * charge) / charge
     }
 }
 
-impl<T: CentroidLike> cmp::PartialEq<T> for MZPoint {
-    #[inline]
-    fn eq(&self, other: &T) -> bool {
-        if (self.mz - other.coordinate()).abs() > 1e-3
-            || (self.intensity - other.intensity()).abs() > 1e-3
-        {
-            return false;
-        }
-        true
+implement_deconvoluted_centroidlike_inner!(DeconvolutedPeak, true, false);
+
+impl fmt::Display for DeconvolutedPeak {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "DeconvolutedPeak({}, {}, {}, {})",
+            self.neutral_mass, self.intensity, self.charge, self.index
+        )
     }
 }
 
-impl CoordinateLike<MZ> for MZPoint {
+impl CoordinateLike<MZ> for DeconvolutedPeak {
     fn coordinate(&self) -> f64 {
-        self.mz
+        self.mz()
     }
 }
 
-impl IndexedCoordinate<MZ> for MZPoint {
-    fn get_index(&self) -> IndexType {
-        0
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::coordinate::*;
+
+    #[test]
+    fn test_conversion() {
+        let x = CentroidPeak::new(204.07, 5000f32, 19);
+        let y: MZPoint = x.clone().into();
+        assert_eq!(y.mz, x.mz);
+        assert_eq!(y.coordinate(), x.coordinate());
+        assert_eq!(y.intensity(), x.intensity());
+        // MZPoint doesn't use index
+        let z: CentroidPeak = y.clone().into();
+        assert_eq!(z, y);
     }
 
-    fn set_index(&mut self, _index: IndexType) {}
-}
-
-impl IntensityMeasurement for MZPoint {
-    fn intensity(&self) -> f32 {
-        self.intensity
-    }
-}
-
-impl From<MZPoint> for CentroidPeak {
-    fn from(peak: MZPoint) -> Self {
-        peak.as_centroid()
-    }
-}
-
-impl From<CentroidPeak> for MZPoint {
-    fn from(peak: CentroidPeak) -> Self {
-        Self {
-            mz: peak.coordinate(),
-            intensity: peak.intensity(),
-        }
+    #[test]
+    fn test_coordinate_context() {
+        let x = DeconvolutedPeak {
+            neutral_mass: 799.359964027,
+            charge: 2,
+            intensity: 5000f32,
+            index: 1,
+        };
+        assert_eq!(x.neutral_mass, 799.359964027);
+        assert_eq!(CoordinateLike::<Mass>::coordinate(&x), 799.359964027);
+        assert_eq!(Mass::coordinate(&x), 799.359964027);
+        assert!((x.mz() - 400.68725848027003).abs() < 1e-6);
+        assert!((MZ::coordinate(&x) - 400.68725848027003).abs() < 1e-6);
     }
 }
