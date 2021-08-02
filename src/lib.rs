@@ -2,7 +2,7 @@
 //! in a mass spectrum.
 //!
 //! It's meant to be used as a building block for other tools and does not provide
-//! any I/O machinery for peak lists
+//! any I/O machinery for peak lists. For that, consider [`mzdata`](https://crates.io/crates/mzdata)
 //!
 //! ```rust
 //! use mzpeaks::{CentroidPeak, PeakSet, PeakCollection, MassErrorType};
@@ -24,6 +24,7 @@
 //!```
 
 pub mod coordinate;
+#[macro_use]
 pub mod macros;
 pub mod mass_error;
 pub mod peak;

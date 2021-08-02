@@ -1,3 +1,6 @@
+/// A set of code generation macros to make a type behave as [`CentroidLike`](crate::CentroidLike)
+/// or [`DeconvolutedCentroidLike`](crate::DeconvolutedCentroidLike).
+
 #[macro_export]
 macro_rules! implement_mz_coord {
     ($t:ty) => {
@@ -140,6 +143,9 @@ macro_rules! implement_deconvoluted_centroid_conversion {
 }
 
 #[macro_export]
+/// The first argument is the type, the second is whether
+/// to strictly adhere to the indexing requirement, and the
+/// third is whether or not to generate `From` specializations.
 macro_rules! implement_deconvoluted_centroidlike_inner {
     ($t:ty, true, true) => {
         $crate::implement_mass_coord!($t);
@@ -182,6 +188,8 @@ macro_rules! implement_deconvoluted_centroidlike_inner {
 }
 
 #[macro_export]
+/// The first argument is the type, the second is whether
+/// to strictly adhere to the indexing requirement.
 macro_rules! implement_deconvoluted_centroidlike {
     ($t:ty, true) => {
         $crate::implement_deconvoluted_centroidlike_inner!($t, true, true);
@@ -192,6 +200,9 @@ macro_rules! implement_deconvoluted_centroidlike {
 }
 
 #[macro_export]
+/// The first argument is the type, the second is whether
+/// to strictly adhere to the indexing requirement, and the
+/// third is whether or not to generate `From` specializations.
 macro_rules! implement_centroidlike_inner {
     ($t:ty, true, true) => {
         $crate::implement_mz_coord!($t);
@@ -235,6 +246,8 @@ macro_rules! implement_centroidlike_inner {
 }
 
 #[macro_export]
+/// The first argument is the type, the second is whether
+/// to strictly adhere to the indexing requirement.
 macro_rules! implement_centroidlike {
     ($t:ty, true) => {
         $crate::implement_centroidlike_inner!($t, true, true);
