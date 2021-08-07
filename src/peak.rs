@@ -21,6 +21,7 @@ pub trait IntensityMeasurement {
 /// A [`CentroidLike`] entity is indexed in m/z coordinate space and
 /// is an [`IntensityMeasurement`]
 pub trait CentroidLike: IndexedCoordinate<MZ> + IntensityMeasurement {
+    #[inline]
     fn as_centroid(&self) -> CentroidPeak {
         CentroidPeak {
             mz: self.coordinate(),
@@ -36,7 +37,7 @@ pub trait KnownCharge {
 }
 
 /// A [`DeconvolutedCentroidLike`] entity is indexed in the neutral mass
-/// coordiante space, has known charge state and an aggregated intensity
+/// coordinate space, has known charge state and an aggregated intensity
 /// measurement. Any [`DeconvolutedCentroidLike`] can be converted into
 /// a [`DeconvolutedPeak`]
 pub trait DeconvolutedCentroidLike:
@@ -63,6 +64,7 @@ pub struct CentroidPeak {
 }
 
 impl CentroidPeak {
+    #[inline]
     pub fn new(mz: f64, intensity: f32, index: IndexType) -> CentroidPeak {
         CentroidPeak {
             mz,
@@ -98,6 +100,7 @@ pub struct MZPoint {
 }
 
 impl MZPoint {
+    #[inline]
     pub fn new(mz: f64, intensity: f32) -> MZPoint {
         MZPoint { mz, intensity }
     }

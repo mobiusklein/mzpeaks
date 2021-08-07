@@ -4,17 +4,19 @@ pub struct MZ {}
 
 impl MZ {
     /// Access the m/z of the coordinate type
+    #[inline]
     pub fn coordinate<T: CoordinateLike<MZ>>(inst: &T) -> f64 {
         CoordinateLike::<MZ>::coordinate(inst)
     }
 }
 
 #[derive(Default, Debug, Clone, Copy)]
-/// The Mass coordiante system
+/// The Mass coordinate system
 pub struct Mass {}
 
 impl Mass {
     /// Access the neutral mass of the coordinate type
+    #[inline]
     pub fn coordinate<T: CoordinateLike<Mass>>(inst: &T) -> f64 {
         CoordinateLike::<Mass>::coordinate(inst)
     }
@@ -25,6 +27,7 @@ impl Mass {
 pub struct Time {}
 impl Time {
     /// Access the elapsed time of the coordinate type
+    #[inline]
     pub fn coordinate<T: CoordinateLike<Time>>(inst: &T) -> f64 {
         CoordinateLike::<Time>::coordinate(inst)
     }
@@ -35,11 +38,13 @@ impl Time {
 pub struct IonMobility {}
 impl IonMobility {
     /// Access the ion mobility time unit of the coordinate type
+    #[inline]
     pub fn coordinate<T: CoordinateLike<IonMobility>>(inst: &T) -> f64 {
         CoordinateLike::<IonMobility>::coordinate(inst)
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum CoordinateDimension {
     MZ(MZ),
     Mass(Mass),
@@ -58,6 +63,7 @@ pub trait CoordinateLike<T>: PartialOrd {
 
 /// A named coordinate system membership for neutral mass
 pub trait MassLocated: CoordinateLike<Mass> {
+    #[inline]
     fn neutral_mass(&self) -> f64 {
         CoordinateLike::<Mass>::coordinate(self)
     }
@@ -65,6 +71,7 @@ pub trait MassLocated: CoordinateLike<Mass> {
 
 /// A named coordinate system membership for m/z
 pub trait MZLocated: CoordinateLike<MZ> {
+    #[inline]
     fn mz(&self) -> f64 {
         CoordinateLike::<MZ>::coordinate(self)
     }

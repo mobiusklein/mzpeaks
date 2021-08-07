@@ -5,6 +5,7 @@
 macro_rules! implement_mz_coord {
     ($t:ty) => {
         impl std::hash::Hash for $t {
+            #[inline]
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
                 let mz_val: i64 = self.coordinate().round() as i64;
                 mz_val.hash(state);
@@ -31,12 +32,14 @@ macro_rules! implement_mz_coord {
         }
 
         impl $crate::CoordinateLike<$crate::MZ> for $t {
+            #[inline]
             fn coordinate(&self) -> f64 {
                 self.mz
             }
         }
 
         impl $crate::IntensityMeasurement for $t {
+            #[inline]
             fn intensity(&self) -> f32 {
                 self.intensity
             }
@@ -48,12 +51,14 @@ macro_rules! implement_mz_coord {
 macro_rules! implement_mass_coord {
     ($t:ty) => {
         impl $crate::CoordinateLike<$crate::Mass> for $t {
+            #[inline]
             fn coordinate(&self) -> f64 {
                 self.neutral_mass
             }
         }
 
         impl std::hash::Hash for $t {
+            #[inline]
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
                 let neutral_mass: i64 =
                     $crate::CoordinateLike::<$crate::Mass>::coordinate(self).round() as i64;
@@ -82,12 +87,14 @@ macro_rules! implement_mass_coord {
         }
 
         impl $crate::IntensityMeasurement for $t {
+            #[inline]
             fn intensity(&self) -> f32 {
                 self.intensity
             }
         }
 
         impl $crate::peak::KnownCharge for $t {
+            #[inline]
             fn charge(&self) -> i32 {
                 self.charge
             }
@@ -150,10 +157,12 @@ macro_rules! implement_deconvoluted_centroidlike_inner {
     ($t:ty, true, true) => {
         $crate::implement_mass_coord!($t);
         impl $crate::IndexedCoordinate<$crate::Mass> for $t {
+            #[inline]
             fn get_index(&self) -> $crate::IndexType {
                 self.index
             }
 
+            #[inline]
             fn set_index(&mut self, index: $crate::IndexType) {
                 self.index = index
             }
@@ -164,10 +173,13 @@ macro_rules! implement_deconvoluted_centroidlike_inner {
     ($t:ty, true, false) => {
         $crate::implement_mass_coord!($t);
         impl $crate::IndexedCoordinate<$crate::Mass> for $t {
+
+            #[inline]
             fn get_index(&self) -> $crate::IndexType {
                 self.index
             }
 
+            #[inline]
             fn set_index(&mut self, index: $crate::IndexType) {
                 self.index = index
             }
@@ -207,10 +219,12 @@ macro_rules! implement_centroidlike_inner {
     ($t:ty, true, true) => {
         $crate::implement_mz_coord!($t);
         impl $crate::IndexedCoordinate<$crate::MZ> for $t {
+            #[inline]
             fn get_index(&self) -> $crate::IndexType {
                 self.index
             }
 
+            #[inline]
             fn set_index(&mut self, index: $crate::IndexType) {
                 self.index = index
             }
@@ -221,6 +235,7 @@ macro_rules! implement_centroidlike_inner {
     ($t:ty, true, false) => {
         $crate::implement_mz_coord!($t);
         impl $crate::IndexedCoordinate<$crate::MZ> for $t {
+            #[inline]
             fn get_index(&self) -> $crate::IndexType {
                 self.index
             }
@@ -234,6 +249,7 @@ macro_rules! implement_centroidlike_inner {
     ($t:ty, false, true) => {
         $crate::implement_mz_coord!($t);
         impl $crate::coordinate::IndexedCoordinate<MZ> for $t {
+            #[inline]
             fn get_index(&self) -> IndexType {
                 0
             }

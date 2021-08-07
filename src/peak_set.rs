@@ -142,14 +142,14 @@ where
             return &self.get_slice(0..0);
         }
 
-        let mut lower_index = match self.search(lower_bound, error_tolerance, error_type) {
-            Some(j) => j,
-            None => 0,
+        let mut lower_index = match self.search_by(lower_bound) {
+            Ok(j) => j,
+            Err(j) => j,
         };
 
-        let mut upper_index = match self.search(upper_bound, error_tolerance, error_type) {
-            Some(j) => j,
-            None => 0,
+        let mut upper_index = match self.search_by(upper_bound) {
+            Ok(j) => j,
+            Err(j) => j,
         };
 
         if lower_index < n {
@@ -179,31 +179,38 @@ where
             return &self.get_slice(0..0);
         }
 
-        let mut lower_index = match self.search(lower_bound, error_tolerance, error_type) {
-            Some(j) => j,
-            None => 0,
+
+        let mut lower_index = match self.search_by(lower_bound) {
+            Ok(j) => j,
+            Err(j) => j,
         };
 
-        if lower_index < n {
-            if self[lower_index].coordinate() < lower_bound {
-                lower_index += 1;
-            }
-        }
+        let checkpoint = lower_index;
 
-        let mut upper_index = lower_index;
-
-        for i in lower_index + 1..n {
-            if self[i].coordinate() >= upper_bound {
-                break;
+        while lower_index < n && lower_index != 0 {
+            if self[lower_index - 1].coordinate() > lower_bound {
+                lower_index -= 1;
             } else {
-                upper_index = i;
+                break;
             }
         }
+
+        let mut upper_index = checkpoint;
+
+        while upper_index < n {
+            if self[upper_index + 1].coordinate() < upper_bound {
+                upper_index += 1;
+            } else {
+                break;
+            }
+        }
+
         let v = self.get_item(lower_index).coordinate();
         if v <= lower_bound || v >= upper_bound {
             lower_index += 1;
         }
-        return &self.get_slice(lower_index..upper_index + 1);
+        let c = lower_index..upper_index + 1;
+        return &self.get_slice(c);
     }
 }
 
@@ -535,6 +542,7 @@ mod test {
         assert_eq!(part.expect("Match peak"), 300);
         let part = peaks.has_peak(773.4414, 10.0, MassErrorType::PPM);
         assert_eq!(part.expect("Match peak").index, 300);
+
         let part = peaks.all_peaks_for(773.4414, 10.0, MassErrorType::PPM);
         assert_eq!(part.len(), 1);
         assert_eq!(part[0].index, 300);
@@ -546,5 +554,10 @@ mod test {
         assert_eq!(part.len(), 1);
         let part = peaks.all_peaks_for(736.237, 10.0, MassErrorType::PPM);
         assert_eq!(part.len(), 0);
+
+        let q = 1221.639893;
+        let block = peaks.all_peaks_for(q, 0.5, MassErrorType::Absolute);
+        assert_eq!(block.len(), 1);
+
     }
 }
