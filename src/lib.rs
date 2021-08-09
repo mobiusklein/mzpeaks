@@ -28,8 +28,8 @@ pub mod coordinate;
 pub mod macros;
 pub mod mass_error;
 pub mod peak;
-pub mod peak_set;
 pub mod peak_index;
+pub mod peak_set;
 pub mod prelude;
 #[cfg(test)]
 mod test_data;
@@ -41,6 +41,7 @@ pub use crate::coordinate::{
 pub use crate::mass_error::MassErrorType;
 pub use crate::peak::{
     CentroidLike, CentroidPeak, DeconvolutedCentroidLike, DeconvolutedPeak, IntensityMeasurement,
+    KnownCharge,
 };
 pub use crate::peak_set::{
     DeconvolutedPeakSet, MZPeakSetType, MassPeakSetType, PeakCollection, PeakSet,

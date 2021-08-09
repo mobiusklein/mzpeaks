@@ -179,7 +179,6 @@ where
             return &self.get_slice(0..0);
         }
 
-
         let mut lower_index = match self.search_by(lower_bound) {
             Ok(j) => j,
             Err(j) => j,
@@ -558,6 +557,5 @@ mod test {
         let q = 1221.639893;
         let block = peaks.all_peaks_for(q, 0.5, MassErrorType::Absolute);
         assert_eq!(block.len(), 1);
-
     }
 }

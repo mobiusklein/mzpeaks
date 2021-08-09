@@ -1,8 +1,7 @@
-use std::collections::hash_map::{HashMap};
+use std::collections::hash_map::HashMap;
 use std::marker::PhantomData;
 
 use crate::prelude::*;
-
 
 #[derive(Debug, Default)]
 pub struct CoordinateKey(f64);
@@ -21,7 +20,6 @@ impl PartialEq<f64> for CoordinateKey {
     }
 }
 
-
 impl std::hash::Hash for CoordinateKey {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -30,19 +28,17 @@ impl std::hash::Hash for CoordinateKey {
     }
 }
 
-
 #[derive(Default, Debug)]
 pub struct PeakSliceMap<'lifespan, T: CoordinateLike<C>, C> {
     pub map: HashMap<CoordinateKey, &'lifespan [T]>,
     _1: PhantomData<C>,
 }
 
-
 impl<'transient, 'lifespan: 'transient, T: CoordinateLike<C>, C> PeakSliceMap<'lifespan, T, C> {
     pub fn with_capacity(capacity: usize) -> PeakSliceMap<'lifespan, T, C> {
         PeakSliceMap {
             map: HashMap::with_capacity(capacity),
-            _1: PhantomData
+            _1: PhantomData,
         }
     }
 
@@ -51,7 +47,7 @@ impl<'transient, 'lifespan: 'transient, T: CoordinateLike<C>, C> PeakSliceMap<'l
         self.map.get(&k)
     }
 
-    pub fn insert(& mut self, key: f64, chunk: &'lifespan [T]) {
+    pub fn insert(&mut self, key: f64, chunk: &'lifespan [T]) {
         let k = CoordinateKey(key);
         self.map.insert(k, chunk);
     }
@@ -61,12 +57,11 @@ impl<'transient, 'lifespan: 'transient, T: CoordinateLike<C>, C> PeakSliceMap<'l
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{CentroidPeak, MZ, MassErrorType};
     use crate::test_data;
+    use crate::{CentroidPeak, MassErrorType, MZ};
     use std::io;
 
     #[test]

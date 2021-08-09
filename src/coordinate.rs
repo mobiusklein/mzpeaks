@@ -52,10 +52,8 @@ pub enum CoordinateDimension {
     IonMobility(IonMobility),
 }
 
-
 /// Denote a type has a coordinate value on coordinate system `T`
 pub trait CoordinateLike<T>: PartialOrd {
-
     /// The trait method for accessing the coordinate of the object on coordinate
     /// system `T`
     fn coordinate(&self) -> f64;
@@ -81,7 +79,6 @@ impl<T: CoordinateLike<Mass>> MassLocated for T {}
 impl<T: CoordinateLike<MZ>> MZLocated for T {}
 
 pub type IndexType = u32;
-
 
 /// Indicate that an object may be indexed by coordinate system `T`
 pub trait IndexedCoordinate<T>: CoordinateLike<T> {

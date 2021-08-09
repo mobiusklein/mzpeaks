@@ -173,7 +173,6 @@ macro_rules! implement_deconvoluted_centroidlike_inner {
     ($t:ty, true, false) => {
         $crate::implement_mass_coord!($t);
         impl $crate::IndexedCoordinate<$crate::Mass> for $t {
-
             #[inline]
             fn get_index(&self) -> $crate::IndexType {
                 self.index
