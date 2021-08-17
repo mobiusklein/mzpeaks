@@ -75,6 +75,12 @@ pub trait MZLocated: CoordinateLike<MZ> {
     }
 }
 
+impl<T: CoordinateLike<C>, C> CoordinateLike<C> for &T {
+    fn coordinate(&self) -> f64 {
+        (*self).coordinate()
+    }
+}
+
 impl<T: CoordinateLike<Mass>> MassLocated for T {}
 impl<T: CoordinateLike<MZ>> MZLocated for T {}
 
@@ -84,4 +90,13 @@ pub type IndexType = u32;
 pub trait IndexedCoordinate<T>: CoordinateLike<T> {
     fn get_index(&self) -> IndexType;
     fn set_index(&mut self, index: IndexType);
+}
+
+
+impl<T: IndexedCoordinate<C>, C> IndexedCoordinate<C> for &T {
+    fn get_index(&self) -> IndexType {
+        (*self).get_index()
+    }
+
+    fn set_index(&mut self, _index: IndexType) {}
 }

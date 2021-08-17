@@ -18,6 +18,12 @@ pub trait IntensityMeasurement {
     fn intensity(&self) -> f32;
 }
 
+impl<T: IntensityMeasurement> IntensityMeasurement for &T {
+    fn intensity(&self) -> f32 {
+        (*self).intensity()
+    }
+}
+
 /// A [`CentroidLike`] entity is indexed in m/z coordinate space and
 /// is an [`IntensityMeasurement`]
 pub trait CentroidLike: IndexedCoordinate<MZ> + IntensityMeasurement {
@@ -34,6 +40,12 @@ pub trait CentroidLike: IndexedCoordinate<MZ> + IntensityMeasurement {
 /// A known charge has a determined charge state value
 pub trait KnownCharge {
     fn charge(&self) -> i32;
+}
+
+impl<T: KnownCharge> KnownCharge for &T {
+    fn charge(&self) -> i32 {
+        (*self).charge()
+    }
 }
 
 /// A [`DeconvolutedCentroidLike`] entity is indexed in the neutral mass
