@@ -158,13 +158,17 @@ where
             }
         }
 
-        if upper_index < n {
+        if upper_index < n && upper_index > 0 {
             if self[upper_index].coordinate() > upper_bound {
                 upper_index -= 1;
             }
         }
 
-        let subset = &self.get_slice(lower_index..upper_index + 1);
+        if upper_index < n {
+            upper_index += 1;
+        }
+
+        let subset = &self.get_slice(lower_index..upper_index);
         subset
     }
 
@@ -384,6 +388,21 @@ impl<P: IndexedCoordinate<C>, C> fmt::Display for PeakSetVec<P, C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PeakSetVec(<{} Peaks>)", self.len())?;
         Ok(())
+    }
+}
+
+impl<P: IndexedCoordinate<C>, C> PartialEq for PeakSetVec<P, C> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.len() != other.len() {
+            false
+        } else {
+            for (a, b) in self.iter().zip(other.iter()) {
+                if a != b {
+                    return false
+                }
+            }
+            true
+        }
     }
 }
 
