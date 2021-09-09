@@ -11,6 +11,8 @@ use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
 use crate::{
     implement_centroidlike, implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner,
 };
+#[cfg(feature="serde")]
+use serde::{Serialize, Deserialize};
 
 /// An intensity measurement is an entity that has a measured intensity
 /// of whateger it is.
@@ -69,6 +71,7 @@ pub trait DeconvolutedCentroidLike:
 /// intensity and an index. Nearly the most basic
 /// peak representation for peak-picked data.
 #[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CentroidPeak {
     pub mz: f64,
     pub intensity: f32,
@@ -106,6 +109,7 @@ impl<T: IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge> Deconvolut
 }
 
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MZPoint {
     pub mz: f64,
     pub intensity: f32,
@@ -121,6 +125,7 @@ impl MZPoint {
 implement_centroidlike!(MZPoint, false);
 
 #[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// Represent a single neutral mass coordinate with an
 /// intensity, a known charge and an index.
 pub struct DeconvolutedPeak {
@@ -186,5 +191,26 @@ mod test {
         assert_eq!(Mass::coordinate(&x), 799.359964027);
         assert!((x.mz() - 400.68725848027003).abs() < 1e-6);
         assert!((MZ::coordinate(&x) - 400.68725848027003).abs() < 1e-6);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serialize() -> std::io::Result<()> {
+        use serde_json;
+        use std::io::prelude::*;
+        use std::io;
+
+        let mut buff = Vec::new();
+        let buffer_writer = io::Cursor::new(&mut buff);
+        let mut writer = io::BufWriter::new(buffer_writer);
+
+        let x = CentroidPeak::new(204.07, 5000f32, 19);
+        // let y: MZPoint = x.clone().into();
+        serde_json::to_writer_pretty(&mut writer, &x)?;
+        writer.flush()?;
+        let view = String::from_utf8_lossy(writer.get_ref().get_ref());
+        let peak: CentroidPeak = serde_json::from_str(&view)?;
+        assert!((peak.mz() - x.mz()).abs() < 1e-6);
+        Ok(())
     }
 }

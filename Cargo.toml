@@ -19,4 +19,9 @@ documentation = "https://docs.rs/mzpeaks"
 [lib]
 name = "mzpeaks"
 
+[features]
+serde-support = ["serde", "serde_json"]
+
 [dependencies]
+serde = {version="1.0.130", features=["derive"], optional=true}
+serde_json = {version = "1.0.59", optional=true}

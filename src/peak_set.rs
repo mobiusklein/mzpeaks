@@ -17,6 +17,9 @@ use std::iter::{Extend, FromIterator};
 use std::marker;
 use std::ops;
 
+#[cfg(feature="serde")]
+use serde::{Serialize, Deserialize};
+
 use crate::mass_error::MassErrorType;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
@@ -253,6 +256,7 @@ macro_rules! impl_slicing {
 /// Represent a sorted list of processed mass spectral peaks. It is a
 /// concrete implementation of [`PeakCollection`] based on a [`Vec`].
 #[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PeakSetVec<P: IndexedCoordinate<C>, C> {
     pub peaks: Vec<P>,
     phantom: marker::PhantomData<C>,
