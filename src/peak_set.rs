@@ -581,4 +581,24 @@ mod test {
         let block = peaks.all_peaks_for(q, 0.5, MassErrorType::Absolute);
         assert_eq!(block.len(), 1);
     }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serialize() -> std::io::Result<()> {
+        use serde_json;
+        use std::io::prelude::*;
+        use std::io;
+
+        let peaks = test_data::read_peaks_from_file("./test/data/test.txt")?;
+        let mut buff = Vec::new();
+        let buffer_writer = io::Cursor::new(&mut buff);
+        let mut writer = io::BufWriter::new(buffer_writer);
+        serde_json::to_writer_pretty(&mut writer, &peaks)?;
+        writer.flush()?;
+        let view = String::from_utf8_lossy(writer.get_ref().get_ref());
+        let dup: PeakSet = serde_json::from_str(&view)?;
+        assert_eq!(peaks.len(), dup.len());
+        assert_eq!(peaks, dup);
+        Ok(())
+    }
 }
