@@ -5,7 +5,7 @@
 //! any I/O machinery for peak lists. For that, consider [`mzdata`](https://crates.io/crates/mzdata)
 //!
 //! ```rust
-//! use mzpeaks::{CentroidPeak, PeakSet, PeakCollection, MassErrorType};
+//! use mzpeaks::{CentroidPeak, PeakSet, PeakCollection, Tolerance};
 //!
 //! let peaks = PeakSet::new(vec![
 //!     CentroidPeak::new(186.04, 522.0, 0),
@@ -13,9 +13,9 @@
 //!     CentroidPeak::new(205.07, 150.0, 2)
 //! ]);
 //!
-//! assert_eq!(peaks.search(204.05, 0.02, MassErrorType::Absolute).unwrap(), 1);
+//! assert_eq!(peaks.search(204.05, Tolerance::Da(0.02)).unwrap(), 1);
 //!
-//! let peak = match peaks.has_peak(204.05, 0.02, MassErrorType::Absolute) {
+//! let peak = match peaks.has_peak(204.05, Tolerance::Da(0.02)) {
 //!     Some(p) => p,
 //!     None => panic!("Failed to retrieve peak!")
 //! };
@@ -38,7 +38,7 @@ pub use crate::coordinate::{
     CoordinateDimension, CoordinateLike, IndexType, IndexedCoordinate, MZLocated, Mass,
     MassLocated, MZ,
 };
-pub use crate::mass_error::MassErrorType;
+pub use crate::mass_error::{Tolerance, ToleranceParsingError};
 pub use crate::peak::{
     CentroidLike, CentroidPeak, DeconvolutedCentroidLike, DeconvolutedPeak, IntensityMeasurement,
     KnownCharge,

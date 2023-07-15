@@ -61,7 +61,7 @@ impl<'transient, 'lifespan: 'transient, T: CoordinateLike<C>, C> PeakSliceMap<'l
 mod test {
     use super::*;
     use crate::test_data;
-    use crate::{CentroidPeak, MassErrorType, MZ};
+    use crate::{CentroidPeak, Tolerance, MZ};
     use std::io;
 
     #[test]
@@ -71,7 +71,7 @@ mod test {
         let mut map = PeakSliceMap::<CentroidPeak, MZ>::default();
 
         let q = 1221.639893;
-        let block = peaks.all_peaks_for(q, 0.4, MassErrorType::Absolute);
+        let block = peaks.all_peaks_for(q, Tolerance::Da(0.4));
         assert_eq!(block.len(), 1);
 
         map.insert(q, block);

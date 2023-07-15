@@ -20,7 +20,7 @@ use std::ops;
 #[cfg(feature="serde")]
 use serde::{Serialize, Deserialize};
 
-use crate::mass_error::MassErrorType;
+use crate::mass_error::Tolerance;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
 use crate::peak::{CentroidPeak, DeconvolutedPeak};
@@ -69,18 +69,18 @@ where
     fn _closest_peak(
         &self,
         query: f64,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
         i: usize,
-        error_type: MassErrorType,
     ) -> Option<usize> {
         let mut j = i;
         let mut best = j;
-        let mut best_err = error_type.call(self.get_item(j).coordinate(), query).abs();
+        let mut best_err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
         let n = self.len();
+        let tol = error_tolerance.tol();
         // search backwards
         while j > 0 && j < n {
-            let err = error_type.call(self.get_item(j).coordinate(), query).abs();
-            if err < best_err && err < error_tolerance {
+            let err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
+            if err < best_err && err < tol {
                 best_err = err;
                 best = j;
             } else if err > best_err {
@@ -91,8 +91,8 @@ where
         j = i;
         // search forwards
         while j < n {
-            let err = error_type.call(self.get_item(j).coordinate(), query).abs();
-            if err < best_err && err < error_tolerance {
+            let err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
+            if err < best_err && err < tol {
                 best_err = err;
                 best = j;
             } else if err > best_err {
@@ -100,7 +100,7 @@ where
             }
             j += 1;
         }
-        if best_err > error_tolerance {
+        if best_err > tol {
             return None;
         }
         Some(best)
@@ -109,19 +109,20 @@ where
     #[inline]
     /// Find the nearest index for `query` within `error_tolerance` units of `error_type` in
     /// this peak collection, or `None`.
-    fn search(&self, query: f64, error_tolerance: f64, error_type: MassErrorType) -> Option<usize> {
-        let lower_bound = error_type.lower_bound(query, error_tolerance);
+    fn search(&self, query: f64, error_tolerance: Tolerance) -> Option<usize> {
+        let lower_bound = error_tolerance.bounds(query).0;
+
         match self.search_by(lower_bound) {
-            Ok(j) => self._closest_peak(query, error_tolerance, j, error_type),
-            Err(j) => self._closest_peak(query, error_tolerance, j, error_type),
+            Ok(j) => self._closest_peak(query, error_tolerance, j),
+            Err(j) => self._closest_peak(query, error_tolerance, j),
         }
     }
 
     #[inline]
     /// Return the peak nearest to `query` within `error_tolerance` units of `error_type` in
     /// this peak collection, or `None`.
-    fn has_peak(&self, query: f64, error_tolerance: f64, error_type: MassErrorType) -> Option<&T> {
-        return match self.search(query, error_tolerance, error_type) {
+    fn has_peak(&self, query: f64, error_tolerance: Tolerance) -> Option<&T> {
+        return match self.search(query, error_tolerance) {
             Some(j) => Some(self.get_item(j)),
             None => None,
         };
@@ -134,11 +135,10 @@ where
         &self,
         low: f64,
         high: f64,
-        error_tolerance: f64,
-        error_type: MassErrorType,
+        error_tolerance: Tolerance,
     ) -> &[T] {
-        let lower_bound = error_type.lower_bound(low, error_tolerance);
-        let upper_bound = error_type.upper_bound(high, error_tolerance);
+        let lower_bound = error_tolerance.bounds(low).0;
+        let upper_bound = error_tolerance.bounds(high).1;
 
         let n = self.len();
         if n == 0 {
@@ -176,10 +176,9 @@ where
     }
 
     #[inline]
-    /// Find all peaks which could match `query` within `error_tolerance` units of `error_type`
-    fn all_peaks_for(&self, query: f64, error_tolerance: f64, error_type: MassErrorType) -> &[T] {
-        let lower_bound = error_type.lower_bound(query, error_tolerance);
-        let upper_bound = error_type.upper_bound(query, error_tolerance);
+    /// Find all peaks which could match `query` within `error_tolerance` units
+    fn all_peaks_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
+        let (lower_bound, upper_bound) = error_tolerance.bounds(query);
 
         let n = self.len();
         if n == 0 {
@@ -560,25 +559,25 @@ mod test {
             }
         }
 
-        let part = peaks.search(773.4414, 0.01, MassErrorType::Absolute);
+        let part = peaks.search(773.4414, Tolerance::Da(0.01));
         assert_eq!(part.expect("Match peak"), 300);
-        let part = peaks.has_peak(773.4414, 10.0, MassErrorType::PPM);
+        let part = peaks.has_peak(773.4414, Tolerance::PPM(10.0));
         assert_eq!(part.expect("Match peak").index, 300);
 
-        let part = peaks.all_peaks_for(773.4414, 10.0, MassErrorType::PPM);
+        let part = peaks.all_peaks_for(773.4414, Tolerance::PPM(10.0));
         assert_eq!(part.len(), 1);
         assert_eq!(part[0].index, 300);
 
-        let part = peaks.search(773.4414, 50.0, MassErrorType::Absolute);
+        let part = peaks.search(773.4414, Tolerance::Da(50.0));
         assert_eq!(part.expect("Match peak"), 300);
 
-        let part = peaks.all_peaks_for(736.637, 10.0, MassErrorType::PPM);
+        let part = peaks.all_peaks_for(736.637, Tolerance::PPM(10.0));
         assert_eq!(part.len(), 1);
-        let part = peaks.all_peaks_for(736.237, 10.0, MassErrorType::PPM);
+        let part = peaks.all_peaks_for(736.237, Tolerance::PPM(10.0));
         assert_eq!(part.len(), 0);
 
         let q = 1221.639893;
-        let block = peaks.all_peaks_for(q, 0.5, MassErrorType::Absolute);
+        let block = peaks.all_peaks_for(q, Tolerance::Da(0.5));
         assert_eq!(block.len(), 1);
     }
 
