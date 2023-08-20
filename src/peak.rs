@@ -8,11 +8,9 @@ use std::cmp;
 use std::fmt;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
-use crate::{
-    implement_centroidlike, implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner,
-};
-#[cfg(feature="serde")]
-use serde::{Serialize, Deserialize};
+use crate::{implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// An intensity measurement is an entity that has a measured intensity
 /// of whateger it is.
@@ -108,7 +106,7 @@ impl<T: IndexedCoordinate<Mass> + IntensityMeasurement + KnownCharge> Deconvolut
 {
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MZPoint {
     pub mz: f64,
@@ -122,7 +120,47 @@ impl MZPoint {
     }
 }
 
-implement_centroidlike!(MZPoint, false);
+impl CoordinateLike<MZ> for MZPoint {
+    fn coordinate(&self) -> f64 {
+        self.mz
+    }
+}
+
+impl IntensityMeasurement for MZPoint {
+    fn intensity(&self) -> f32 {
+        self.intensity
+    }
+}
+
+impl crate::coordinate::IndexedCoordinate<MZ> for MZPoint {
+    #[inline]
+    fn get_index(&self) -> IndexType {
+        0
+    }
+    fn set_index(&mut self, _index: IndexType) {}
+}
+
+impl From<MZPoint> for crate::CentroidPeak {
+    fn from(peak: MZPoint) -> Self {
+        CentroidPeak {
+            mz: peak.mz,
+            intensity: peak.intensity,
+            index: 0,
+        }
+    }
+}
+
+impl From<crate::CentroidPeak> for MZPoint {
+    fn from(peak: crate::CentroidPeak) -> Self {
+        let mut inst = Self {
+            mz: peak.coordinate(),
+            intensity: peak.intensity(),
+            ..Self::default()
+        };
+        inst.set_index(peak.index);
+        inst
+    }
+}
 
 #[derive(Default, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -197,8 +235,8 @@ mod test {
     #[test]
     fn test_serialize() -> std::io::Result<()> {
         use serde_json;
-        use std::io::prelude::*;
         use std::io;
+        use std::io::prelude::*;
 
         let mut buff = Vec::new();
         let buffer_writer = io::Cursor::new(&mut buff);

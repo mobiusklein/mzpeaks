@@ -111,6 +111,16 @@ macro_rules! implement_centroid_conversion {
             }
         }
 
+        impl From<$t> for $crate::peak::MZPoint {
+            fn from(peak: $t) -> Self {
+                Self {
+                    mz: peak.coordinate(),
+                    intensity: peak.intensity(),
+                    ..Self::default()
+                }
+            }
+        }
+
         impl From<$crate::CentroidPeak> for $t {
             fn from(peak: $crate::CentroidPeak) -> Self {
                 let mut inst = Self {
