@@ -67,6 +67,9 @@ impl ToString for Tolerance {
 }
 
 impl Tolerance {
+
+    /// The interval around `query` which is within this `Tolerance`
+    /// instance's range.
     pub fn bounds(&self, query: f64) -> (f64, f64) {
         match self {
             Tolerance::PPM(tol) => {
@@ -79,6 +82,7 @@ impl Tolerance {
         }
     }
 
+    /// Compute the error between the two masses, in the appropriate units
     pub fn call(&self, query: f64, reference: f64) -> f64 {
         match self {
             Self::PPM(_tol) => {
@@ -90,6 +94,7 @@ impl Tolerance {
         }
     }
 
+    /// Return the numeric value of the error threshold in its units
     pub fn tol(&self) -> f64 {
         match self {
             Self::PPM(tol) => *tol,
@@ -97,11 +102,13 @@ impl Tolerance {
         }
     }
 
+    /// Check if `query` is within the tolerated error interval around `reference`
     pub fn test(&self, query: f64, reference: f64) -> bool {
         let (lower_bound, upper_bound) = self.bounds(reference);
         query >= lower_bound && query <= upper_bound
     }
 
+    /// Format the error between two masses with the appropriate units
     pub fn format_error(&self, query: f64, reference: f64) -> String {
         match self {
             Self::PPM(_tol) => {
@@ -116,6 +123,7 @@ impl Tolerance {
     }
 }
 
+/// Tolerance objects can by scaled up or down by a floating point value
 impl ops::Mul<f64> for Tolerance {
     type Output = Tolerance;
 

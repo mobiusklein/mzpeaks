@@ -107,7 +107,7 @@ where
     }
 
     #[inline]
-    /// Find the nearest index for `query` within `error_tolerance` units of `error_type` in
+    /// Find the nearest index for `query` within `error_tolerance` in
     /// this peak collection, or `None`.
     fn search(&self, query: f64, error_tolerance: Tolerance) -> Option<usize> {
         let lower_bound = error_tolerance.bounds(query).0;
@@ -119,7 +119,7 @@ where
     }
 
     #[inline]
-    /// Return the peak nearest to `query` within `error_tolerance` units of `error_type` in
+    /// Return the peak nearest to `query` within `error_tolerance` in
     /// this peak collection, or `None`.
     fn has_peak(&self, query: f64, error_tolerance: Tolerance) -> Option<&T> {
         return match self.search(query, error_tolerance) {
@@ -130,7 +130,7 @@ where
 
     #[inline]
     /// Return a slice containing all peaks between `low` and `high` coordinates within
-    /// `error_tolerance` units of `error_type`.
+    /// `error_tolerance`.
     fn between(
         &self,
         low: f64,
