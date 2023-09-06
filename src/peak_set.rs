@@ -187,7 +187,9 @@ where
 
         let mut lower_index = match self.search_by(lower_bound) {
             Ok(j) => j,
-            Err(j) => j,
+            Err(j) => {
+                j.min(n - 1)
+            },
         };
 
         let checkpoint = lower_index;
@@ -202,7 +204,7 @@ where
 
         let mut upper_index = checkpoint;
 
-        while upper_index < n {
+        while upper_index < n - 1 {
             if self[upper_index + 1].coordinate() < upper_bound {
                 upper_index += 1;
             } else {
@@ -579,6 +581,14 @@ mod test {
         let q = 1221.639893;
         let block = peaks.all_peaks_for(q, Tolerance::Da(0.5));
         assert_eq!(block.len(), 1);
+
+        let q = 2000.0;
+        let block = peaks.all_peaks_for(q, Tolerance::PPM(10.));
+        assert_eq!(block.len(), 0);
+
+        let q = -2000.0;
+        let block = peaks.all_peaks_for(q, Tolerance::PPM(10.));
+        assert_eq!(block.len(), 0);
     }
 
     #[cfg(feature = "serde")]

@@ -6,8 +6,11 @@ use pyo3::pyclass::CompareOp;
 use pyo3::types::{PySlice, PyLong, PyFloat, PyString, PyList};
 use pyo3::prelude::*;
 
-use mzpeaks::{CoordinateLike, IndexedCoordinate, IntensityMeasurement, CentroidPeak};
-use mzpeaks::coordinate::MZ;
+use mzpeaks::{
+    CoordinateLike, IndexedCoordinate, IntensityMeasurement, CentroidPeak,
+    KnownCharge, DeconvolutedCentroidLike, DeconvolutedPeak, MassLocated
+};
+use mzpeaks::coordinate::{MZ, Mass, MZLocated};
 use mzpeaks::Tolerance;
 use mzpeaks::peak_set::{PeakCollection, PeakSetVec};
 
@@ -148,6 +151,105 @@ impl IntensityMeasurement for PyCentroidPeak {
     }
 }
 
+
+#[pyclass(module="pymzpeaks", name="DeconvolutedPeak")]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct PyDeconvolutedPeak(DeconvolutedPeak);
+
+
+
+#[pymethods]
+impl PyDeconvolutedPeak {
+    #[new]
+    pub fn new(neutral_mass: f64, intensity: f32, charge: i32, index: u32) -> Self {
+        (DeconvolutedPeak {neutral_mass, intensity, index, charge}).into()
+    }
+
+    #[getter]
+    fn neutral_mass(&self) -> f64 {
+        self.0.neutral_mass
+    }
+
+    #[getter]
+    fn mz(&self) -> f64 {
+        MZLocated::mz(&self.0)
+    }
+
+    #[getter]
+    fn intensity(&self) -> f32 {
+        self.0.intensity
+    }
+
+    #[getter]
+    fn index(&self) -> u32 {
+        return self.0.index
+    }
+
+    #[getter]
+    fn charge(&self) -> i32 {
+        self.0.charge
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "DeconvolutedPeak({:0.4}, {:0.4}, {}, {})",
+            self.neutral_mass(), self.intensity(), self.charge(), self.index()
+        )
+    }
+
+    fn __richcmp__(&self, other: PyRef<PyDeconvolutedPeak>, op: CompareOp) -> PyResult<bool> {
+        match op {
+            CompareOp::Eq => Ok(self.0 == other.0),
+            CompareOp::Ne => Ok(self.0 != other.0),
+            CompareOp::Le => Ok(self.0 <= other.0),
+            CompareOp::Ge => Ok(self.0 >= other.0),
+            CompareOp::Lt => Ok(self.0 < other.0),
+            CompareOp::Gt => Ok(self.0 > other.0)
+        }
+    }
+}
+
+impl From<DeconvolutedPeak> for PyDeconvolutedPeak {
+    fn from(value: DeconvolutedPeak) -> Self {
+        Self(value)
+    }
+}
+
+impl CoordinateLike<MZ> for PyDeconvolutedPeak {
+    fn coordinate(&self) -> f64 {
+        self.0.mz()
+    }
+}
+
+impl CoordinateLike<Mass> for PyDeconvolutedPeak {
+    fn coordinate(&self) -> f64 {
+        self.0.neutral_mass
+    }
+}
+
+impl IndexedCoordinate<Mass> for PyDeconvolutedPeak {
+    fn get_index(&self) -> mzpeaks::IndexType {
+        self.0.index
+    }
+
+    fn set_index(&mut self, index: mzpeaks::IndexType) {
+        self.0.index = index
+    }
+}
+
+impl IntensityMeasurement for PyDeconvolutedPeak {
+    fn intensity(&self) -> f32 {
+        self.0.intensity
+    }
+}
+
+impl KnownCharge for PyDeconvolutedPeak {
+    fn charge(&self) -> i32 {
+        self.0.charge
+    }
+}
+
+
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct PyPeakRef(usize, Arc<RwLock<PeakSetVec<PyCentroidPeak, MZ>>>);
@@ -231,9 +333,7 @@ impl PyPeakRef {
 }
 
 
-
-
-#[pyclass(sequence)]
+#[pyclass(module="pymzpeaks", sequence, name="PeakSet")]
 #[derive(Debug, Clone)]
 pub struct PyPeakSet(PeakSetVec<PyCentroidPeak, MZ>);
 
@@ -293,11 +393,74 @@ impl PyPeakSet {
 }
 
 
+#[pyclass(module="pymzpeaks", sequence, name="PeakSet")]
+#[derive(Debug, Clone)]
+pub struct PyDeconvolutedPeakSet(PeakSetVec<PyDeconvolutedPeak, Mass>);
+
+#[pymethods]
+impl PyDeconvolutedPeakSet {
+
+    #[new]
+    pub fn py_new(peaks: Vec<PyDeconvolutedPeak>) -> Self {
+        PyDeconvolutedPeakSet(PeakSetVec::new(peaks))
+    }
+
+    #[pyo3(signature=(query, error_tolerance=FloatOrTolerance::Float(10.0)))]
+    pub fn has_peak(&self, query: f64, error_tolerance: FloatOrTolerance) -> Option<PyDeconvolutedPeak> {
+        if let Some(peak) = self.0.has_peak(query, <FloatOrTolerance as Into<PyTolerance>>::into(error_tolerance).0) {
+            Some(peak.clone())
+        } else {
+            None
+        }
+    }
+
+    #[pyo3(signature=(query, error_tolerance=FloatOrTolerance::Float(10.0)))]
+    pub fn all_peaks_for(&self, query: f64, error_tolerance: FloatOrTolerance) -> PyResult<Py<PyList>> {
+        let peaks = self.0.all_peaks_for(query, <FloatOrTolerance as Into<PyTolerance>>::into(error_tolerance).0);
+        Python::with_gil(|py| {
+            let pl = PyList::empty(py);
+            peaks.into_iter().map(|p| -> PyResult<()> {
+                let py_p = (p.clone()).into_py(py);
+                pl.append(py_p)
+            }).collect::<PyResult<()>>()?;
+            Ok(pl.into())
+        })
+    }
+
+    fn __getitem__(&self,  i: &PyAny) -> PyResult<PyDeconvolutedPeak> {
+        if i.is_instance_of::<PySlice>()? {
+            Err(PyTypeError::new_err("Could not select indices by slice"))
+        } else if i.is_instance_of::<PyLong>()? {
+            let i: usize = i.extract()?;
+            if i >= self.0.len() {
+                Err(PyIndexError::new_err(i))
+            } else {
+                let p = self.0.get_item(i);
+                Ok(p.clone())
+            }
+        } else {
+            Err(PyTypeError::new_err("Could not select indices from input"))
+        }
+    }
+
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PyDeconvolutedPeakSet({} peaks)", self.0.len())
+    }
+}
+
+
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn pymzpeaks(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyTolerance>()?;
     m.add_class::<PyCentroidPeak>()?;
     m.add_class::<PyPeakSet>()?;
+    m.add_class::<PyDeconvolutedPeak>()?;
+    m.add_class::<PyDeconvolutedPeakSet>()?;
     Ok(())
 }
