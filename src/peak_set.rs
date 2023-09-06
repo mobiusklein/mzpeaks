@@ -589,6 +589,16 @@ mod test {
         let q = -2000.0;
         let block = peaks.all_peaks_for(q, Tolerance::PPM(10.));
         assert_eq!(block.len(), 0);
+
+        let block = peaks.between(-2000f64, 2000f64, Tolerance::PPM(10.0));
+        assert_eq!(block.len(), peaks.len());
+
+        let block = peaks.between(0.0, 2000f64, Tolerance::PPM(10.0));
+        assert_eq!(block.len(), peaks.len());
+
+        let block = peaks.between(1313.0, 1316.0, "10.0ppm".parse().unwrap());
+        assert_eq!(block.len(), 3);
+
     }
 
     #[cfg(feature = "serde")]

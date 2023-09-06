@@ -156,8 +156,6 @@ impl IntensityMeasurement for PyCentroidPeak {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct PyDeconvolutedPeak(DeconvolutedPeak);
 
-
-
 #[pymethods]
 impl PyDeconvolutedPeak {
     #[new]
