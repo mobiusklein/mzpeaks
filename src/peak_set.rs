@@ -72,6 +72,9 @@ where
         error_tolerance: Tolerance,
         i: usize,
     ) -> Option<usize> {
+        if i >= self.len() {
+            return None
+        }
         let mut j = i;
         let mut best = j;
         let mut best_err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
@@ -142,7 +145,7 @@ where
 
         let n = self.len();
         if n == 0 {
-            return &self.get_slice(0..0);
+            return self.get_slice(0..0);
         }
 
         let mut lower_index = match self.search_by(lower_bound) {
@@ -171,7 +174,11 @@ where
             upper_index += 1;
         }
 
-        let subset = &self.get_slice(lower_index..upper_index);
+        if lower_index >= n {
+            return self.get_slice(0..0)
+        }
+
+        let subset = self.get_slice(lower_index..upper_index);
         subset
     }
 
@@ -599,6 +606,27 @@ mod test {
         let block = peaks.between(1313.0, 1316.0, "10.0ppm".parse().unwrap());
         assert_eq!(block.len(), 3);
 
+    }
+
+    #[test]
+    fn test_edgecases() {
+        let peaks = PeakSet::new(vec![
+            CentroidPeak::new(500.0, 2., 0)
+        ]);
+
+        let p = peaks.has_peak(500.0, Tolerance::Da(1.0));
+        assert!(p.is_some());
+
+        let p = peaks.all_peaks_for(500.0, Tolerance::Da(1.0));
+        assert!(p.len() == 1);
+
+        let peaks = PeakSet::new(vec![]);
+
+        let p = peaks.has_peak(500.0, Tolerance::Da(1.0));
+        assert!(p.is_none());
+
+        let p = peaks.all_peaks_for(500.0, Tolerance::Da(1.0));
+        assert!(p.len() == 0);
     }
 
     #[cfg(feature = "serde")]

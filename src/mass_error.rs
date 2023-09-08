@@ -1,4 +1,4 @@
-use std::{ops, fmt::Display, error::Error, str::FromStr};
+use std::{ops::{self, RangeInclusive}, fmt::Display, error::Error, str::FromStr};
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
@@ -120,6 +120,11 @@ impl Tolerance {
                 format!("{}Da", magnitude).to_string()
             }
         }
+    }
+
+    pub fn as_range(&self, query: f64) -> RangeInclusive<f64> {
+        let (low, hi) = self.bounds(query);
+        RangeInclusive::new(low, hi)
     }
 }
 
