@@ -59,6 +59,11 @@ pub trait CoordinateLike<T>: PartialOrd {
     fn coordinate(&self) -> f64;
 }
 
+
+pub trait CoordinateLikeMut<T> : CoordinateLike<T> {
+    fn coordinate_mut(&mut self) -> &mut f64;
+}
+
 /// A named coordinate system membership for neutral mass
 pub trait MassLocated: CoordinateLike<Mass> {
     #[inline]
@@ -78,6 +83,18 @@ pub trait MZLocated: CoordinateLike<MZ> {
 impl<T: CoordinateLike<C>, C> CoordinateLike<C> for &T {
     fn coordinate(&self) -> f64 {
         (*self).coordinate()
+    }
+}
+
+impl<T: CoordinateLike<C>, C> CoordinateLike<C> for &mut T {
+    fn coordinate(&self) -> f64 {
+        CoordinateLike::<C>::coordinate(*self)
+    }
+}
+
+impl<T: CoordinateLikeMut<C>, C> CoordinateLikeMut<C> for &mut T {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        CoordinateLikeMut::<C>::coordinate_mut(*self)
     }
 }
 

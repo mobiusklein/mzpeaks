@@ -44,6 +44,13 @@ macro_rules! implement_mz_coord {
                 self.intensity
             }
         }
+
+        impl $crate::IntensityMeasurementMut for $t {
+            #[inline]
+            fn intensity_mut(&mut self) -> &mut f32 {
+                &mut self.intensity
+            }
+        }
     };
 }
 
@@ -79,7 +86,7 @@ macro_rules! implement_mass_coord {
             }
         }
 
-        impl<T: $crate::DeconvolutedCentroidLike> cmp::PartialOrd<T> for $t {
+        impl<T: $crate::DeconvolutedCentroidLike> std::cmp::PartialOrd<T> for $t {
             #[inline]
             fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
                 self.neutral_mass.partial_cmp(&other.coordinate())
@@ -99,6 +106,21 @@ macro_rules! implement_mass_coord {
                 self.charge
             }
         }
+
+        impl $crate::KnownChargeMut for $t {
+            #[inline]
+            fn charge_mut(&mut self) -> &mut i32 {
+                &mut self.charge
+            }
+        }
+
+        impl $crate::IntensityMeasurementMut for $t {
+            #[inline]
+            fn intensity_mut(&mut self) -> &mut f32 {
+                &mut self.intensity
+            }
+        }
+
     };
 }
 
@@ -145,9 +167,10 @@ macro_rules! implement_deconvoluted_centroid_conversion {
         }
 
         impl From<$crate::DeconvolutedPeak> for $t {
-            fn from(peak: $crate::CentroidPeak) -> Self {
+            fn from(peak: $crate::DeconvolutedPeak) -> Self {
+                let neutral_mass: f64 = CoordinateLike::<$crate::Mass>::coordinate(&peak);
                 let mut inst = Self {
-                    mz: peak.coordinate(),
+                    neutral_mass,
                     intensity: peak.intensity(),
                     charge: peak.charge(),
                     ..Self::default()

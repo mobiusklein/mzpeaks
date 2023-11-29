@@ -36,12 +36,12 @@ mod test_data;
 
 pub use crate::coordinate::{
     CoordinateDimension, CoordinateLike, IndexType, IndexedCoordinate, MZLocated, Mass,
-    MassLocated, MZ,
+    MassLocated, MZ, CoordinateLikeMut
 };
 pub use crate::mass_error::{Tolerance, ToleranceParsingError};
 pub use crate::peak::{
     CentroidLike, CentroidPeak, DeconvolutedCentroidLike, DeconvolutedPeak, IntensityMeasurement,
-    KnownCharge,
+    KnownCharge, IntensityMeasurementMut, KnownChargeMut
 };
 pub use crate::peak_set::{
     DeconvolutedPeakSet, MZPeakSetType, MassPeakSetType, PeakCollection, PeakSet,

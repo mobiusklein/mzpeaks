@@ -1,4 +1,5 @@
 use std::ops::{Index, IndexMut, Deref};
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
@@ -8,7 +9,8 @@ use pyo3::prelude::*;
 
 use mzpeaks::{
     CoordinateLike, IndexedCoordinate, IntensityMeasurement, CentroidPeak,
-    KnownCharge, DeconvolutedCentroidLike, DeconvolutedPeak, MassLocated
+    KnownCharge, DeconvolutedCentroidLike, DeconvolutedPeak, MassLocated,
+    IntensityMeasurementMut, KnownChargeMut, CoordinateLikeMut
 };
 use mzpeaks::coordinate::{MZ, Mass, MZLocated};
 use mzpeaks::Tolerance;
@@ -56,11 +58,11 @@ impl PyTolerance {
     }
 }
 
-impl std::str::FromStr for PyTolerance {
-    type Err = <Tolerance as std::str::FromStr>::Err;
+impl FromStr for PyTolerance {
+    type Err = <Tolerance as FromStr>::Err;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match <Tolerance as std::str::FromStr>::from_str(s) {
+        match <Tolerance as FromStr>::from_str(s) {
             Ok(tol) => Ok(Self(tol)),
             Err(err) => Err(err)
         }
@@ -146,8 +148,15 @@ impl IndexedCoordinate<MZ> for PyCentroidPeak {
 }
 
 impl IntensityMeasurement for PyCentroidPeak {
+    #[inline]
     fn intensity(&self) -> f32 {
         self.0.intensity
+    }
+}
+
+impl IntensityMeasurementMut for PyCentroidPeak {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        self.0.intensity_mut()
     }
 }
 
@@ -241,12 +250,23 @@ impl IntensityMeasurement for PyDeconvolutedPeak {
     }
 }
 
+impl IntensityMeasurementMut for PyDeconvolutedPeak {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        self.0.intensity_mut()
+    }
+}
+
 impl KnownCharge for PyDeconvolutedPeak {
     fn charge(&self) -> i32 {
         self.0.charge
     }
 }
 
+impl KnownChargeMut for PyDeconvolutedPeak {
+    fn charge_mut(&mut self) -> &mut i32 {
+        self.0.charge_mut()
+    }
+}
 
 #[pyclass]
 #[derive(Debug, Clone)]

@@ -18,11 +18,28 @@ pub trait IntensityMeasurement {
     fn intensity(&self) -> f32;
 }
 
+pub trait IntensityMeasurementMut : IntensityMeasurement {
+    fn intensity_mut(&mut self) -> &mut f32;
+}
+
 impl<T: IntensityMeasurement> IntensityMeasurement for &T {
     fn intensity(&self) -> f32 {
         (*self).intensity()
     }
 }
+
+impl<T: IntensityMeasurement> IntensityMeasurement for &mut T {
+    fn intensity(&self) -> f32 {
+        IntensityMeasurement::intensity(*self)
+    }
+}
+
+impl<T: IntensityMeasurementMut> IntensityMeasurementMut for &mut T {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        IntensityMeasurementMut::intensity_mut(*self)
+    }
+}
+
 
 /// A [`CentroidLike`] entity is indexed in m/z coordinate space and
 /// is an [`IntensityMeasurement`]
@@ -45,6 +62,22 @@ pub trait KnownCharge {
 impl<T: KnownCharge> KnownCharge for &T {
     fn charge(&self) -> i32 {
         (*self).charge()
+    }
+}
+
+pub trait KnownChargeMut : KnownCharge {
+    fn charge_mut(&mut self) -> &mut i32;
+}
+
+impl<T: KnownCharge> KnownCharge for &mut T {
+    fn charge(&self) -> i32 {
+        KnownCharge::charge(*self)
+    }
+}
+
+impl<T: KnownChargeMut> KnownChargeMut for &mut T {
+    fn charge_mut(&mut self) -> &mut i32 {
+        KnownChargeMut::charge_mut(*self)
     }
 }
 
@@ -127,12 +160,20 @@ impl CoordinateLike<MZ> for MZPoint {
 }
 
 impl IntensityMeasurement for MZPoint {
+    #[inline]
     fn intensity(&self) -> f32 {
         self.intensity
     }
 }
 
-impl crate::coordinate::IndexedCoordinate<MZ> for MZPoint {
+impl IntensityMeasurementMut for MZPoint {
+    #[inline]
+    fn intensity_mut(&mut self) -> &mut f32 {
+        &mut self.intensity
+    }
+}
+
+impl IndexedCoordinate<MZ> for MZPoint {
     #[inline]
     fn get_index(&self) -> IndexType {
         0
@@ -140,7 +181,7 @@ impl crate::coordinate::IndexedCoordinate<MZ> for MZPoint {
     fn set_index(&mut self, _index: IndexType) {}
 }
 
-impl From<MZPoint> for crate::CentroidPeak {
+impl From<MZPoint> for CentroidPeak {
     fn from(peak: MZPoint) -> Self {
         CentroidPeak {
             mz: peak.mz,
@@ -150,8 +191,8 @@ impl From<MZPoint> for crate::CentroidPeak {
     }
 }
 
-impl From<crate::CentroidPeak> for MZPoint {
-    fn from(peak: crate::CentroidPeak) -> Self {
+impl From<CentroidPeak> for MZPoint {
+    fn from(peak: CentroidPeak) -> Self {
         let mut inst = Self {
             mz: peak.coordinate(),
             intensity: peak.intensity(),
