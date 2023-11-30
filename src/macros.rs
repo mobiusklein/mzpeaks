@@ -24,9 +24,9 @@ macro_rules! implement_mz_coord {
             }
         }
 
-        impl<T: $crate::CentroidLike> cmp::PartialOrd<T> for $t {
+        impl<T: $crate::CentroidLike> std::cmp::PartialOrd<T> for $t {
             #[inline]
-            fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
+            fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
                 self.mz.partial_cmp(&other.coordinate())
             }
         }

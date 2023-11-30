@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut, Deref};
+use std::ops::{Index, IndexMut, Deref, DerefMut};
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
@@ -7,10 +7,10 @@ use pyo3::pyclass::CompareOp;
 use pyo3::types::{PySlice, PyLong, PyFloat, PyString, PyList};
 use pyo3::prelude::*;
 
+use mzpeaks::{prelude::*, CoordinateDimension, IndexType};
 use mzpeaks::{
-    CoordinateLike, IndexedCoordinate, IntensityMeasurement, CentroidPeak,
-    KnownCharge, DeconvolutedCentroidLike, DeconvolutedPeak, MassLocated,
-    IntensityMeasurementMut, KnownChargeMut, CoordinateLikeMut
+    CentroidPeak,
+    DeconvolutedPeak,
 };
 use mzpeaks::coordinate::{MZ, Mass, MZLocated};
 use mzpeaks::Tolerance;
@@ -268,85 +268,202 @@ impl KnownChargeMut for PyDeconvolutedPeak {
     }
 }
 
+
+#[derive(Debug, Clone)]
+pub enum CentroidPeakOrRef {
+    Peak(PyCentroidPeak),
+    Ref {index: usize, peak_set: Arc<RwLock<PeakSetVec<PyCentroidPeak, MZ>>>}
+}
+
+impl From<CentroidPeak> for CentroidPeakOrRef {
+    fn from(value: CentroidPeak) -> Self {
+        Self::Peak(value.into())
+    }
+}
+
+impl Default for CentroidPeakOrRef {
+    fn default() -> Self {
+        Self::Peak(PyCentroidPeak::new(0.0, 0.0, 0))
+    }
+}
+
 #[pyclass]
 #[derive(Debug, Clone)]
-pub struct PyPeakRef(usize, Arc<RwLock<PeakSetVec<PyCentroidPeak, MZ>>>);
+pub struct PyPeakRef(CentroidPeakOrRef);
 
 #[pymethods]
 impl PyPeakRef {
     #[getter]
     fn mz(&self) -> PyResult<f64> {
-        match self.1.as_ref().read() {
-            Ok(peaks) => {
-                Ok(peaks.deref().index(self.0).mz())
+        match &self.0 {
+            CentroidPeakOrRef::Peak(peak) => Ok(peak.mz()),
+            CentroidPeakOrRef::Ref { index, peak_set } => {
+                match peak_set.as_ref().read() {
+                    Ok(peaks) => {
+                        Ok(peaks.deref().index(*index).mz())
+                    },
+                    Err(err) => {
+                        Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
+                    }
+                }
             },
-            Err(err) => {
-                Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
-            }
         }
     }
 
     #[setter]
-    fn mz_setter(&self, val: f64) -> PyResult<()>{
-        match self.1.as_ref().write() {
-            Ok(mut peaks) => {
-                peaks.index_mut(self.0).0.mz = val;
+    fn mz_setter(&mut self, val: f64) -> PyResult<()>{
+        match &mut self.0 {
+            CentroidPeakOrRef::Peak(peak) => {
+                peak.0.mz = val;
                 Ok(())
             },
-            Err(err) => {
-                Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
-            }
+            CentroidPeakOrRef::Ref { index, peak_set } => {
+                match peak_set.as_ref().write() {
+                    Ok(mut peaks) => {
+                        peaks.deref_mut().index_mut(*index).0.mz = val;
+                        Ok(())
+                    },
+                    Err(err) => {
+                        Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
+                    }
+                }
+            },
         }
     }
 
     #[getter]
     fn intensity(&self) -> PyResult<f32> {
-        match self.1.as_ref().read() {
-            Ok(peaks) => {
-                Ok(peaks.deref().index(self.0).intensity())
+        match &self.0 {
+            CentroidPeakOrRef::Peak(peak) => Ok(peak.intensity()),
+            CentroidPeakOrRef::Ref { index, peak_set } => {
+                match peak_set.as_ref().read() {
+                    Ok(peaks) => {
+                        Ok(peaks.deref().index(*index).intensity())
+                    },
+                    Err(err) => {
+                        Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
+                    }
+                }
             },
-            Err(err) => {
-                Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
-            }
         }
     }
 
     #[setter]
-    fn intensity_setter(&self, val: f32) -> PyResult<()>{
-        match self.1.as_ref().write() {
-            Ok(mut peaks) => {
-                peaks.index_mut(self.0).0.intensity = val;
+    fn intensity_setter(&mut self, val: f32) -> PyResult<()>{
+        match &mut self.0 {
+            CentroidPeakOrRef::Peak(peak) => {
+                peak.0.intensity = val;
                 Ok(())
             },
-            Err(err) => {
-                Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
-            }
+            CentroidPeakOrRef::Ref { index, peak_set } => {
+                match peak_set.as_ref().write() {
+                    Ok(mut peaks) => {
+                        peaks.deref_mut().index_mut(*index).0.intensity = val;
+                        Ok(())
+                    },
+                    Err(err) => {
+                        Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
+                    }
+                }
+            },
         }
     }
 
     #[getter]
     fn index(&self) -> PyResult<u32> {
-        match self.1.as_ref().read() {
-            Ok(peaks) => {
-                Ok(peaks.deref().index(self.0).index())
+        match &self.0 {
+            CentroidPeakOrRef::Peak(peak) => Ok(peak.get_index()),
+            CentroidPeakOrRef::Ref { index, peak_set } => {
+                match peak_set.as_ref().read() {
+                    Ok(peaks) => {
+                        Ok(peaks.deref().index(*index).get_index())
+                    },
+                    Err(err) => {
+                        Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
+                    }
+                }
             },
-            Err(err) => {
-                Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
-            }
         }
     }
 
     #[setter]
-    fn index_setter(&self, val: u32) -> PyResult<()>{
-        match self.1.as_ref().write() {
-            Ok(mut peaks) => {
-                peaks.index_mut(self.0).0.index = val;
+    fn index_setter(&mut self, val: u32) -> PyResult<()>{
+        match &mut self.0 {
+            CentroidPeakOrRef::Peak(peak) => {
+                peak.0.set_index(val);
                 Ok(())
             },
-            Err(err) => {
-                Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
-            }
+            CentroidPeakOrRef::Ref { index, peak_set } => {
+                match peak_set.as_ref().write() {
+                    Ok(mut peaks) => {
+                        peaks.deref_mut().index_mut(*index).0.set_index(val);
+                        Ok(())
+                    },
+                    Err(err) => {
+                        Err(PyValueError::new_err(format!("Failed to get read access to peak set: {}", err)))
+                    }
+                }
+            },
         }
+    }
+}
+
+
+macro_rules! unpack {
+    ($e:expr, $v:literal) => {
+        $e.unwrap_or_else(|_| panic!("Failed to acquire read lock on peak {}", $v))
+    };
+    ($e:expr) => {
+        $e.unwrap_or_else(|_| panic!("Failed to acquire read lock on peak"))
+    };
+
+}
+
+
+impl PartialEq for PyPeakRef {
+    fn eq(&self, other: &Self) -> bool {
+        if (unpack!(self.mz(), 1) - unpack!(other.mz(), 2)).abs() > 1e-3 {
+            false
+        } else {
+            (unpack!(self.intensity(), 1) - unpack!(other.intensity(), 2)).abs() > 1e-3
+        }
+    }
+}
+
+
+impl PartialOrd for PyPeakRef {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match unpack!(self.mz(), 1).partial_cmp(&unpack!(other.mz(), 2)) {
+            Some(val) => {
+                match val {
+                    std::cmp::Ordering::Equal => unpack!(self.intensity(), 1).partial_cmp(&unpack!(other.intensity(), 2)),
+                    _ => Some(val),
+                }
+            },
+            None => None,
+        }
+    }
+}
+
+impl CoordinateLike<MZ> for PyPeakRef {
+    fn coordinate(&self) -> f64 {
+        unpack!(self.mz())
+    }
+}
+
+impl IntensityMeasurement for PyPeakRef {
+    fn intensity(&self) -> f32 {
+        unpack!(self.intensity())
+    }
+}
+
+impl IndexedCoordinate<MZ> for PyPeakRef {
+    fn get_index(&self) -> IndexType {
+        unpack!(self.index())
+    }
+
+    fn set_index(&mut self, index: IndexType) {
+        self.index_setter(index).unwrap_or_else(|_| panic!("Failed to acquire write lock on peak"))
     }
 }
 
