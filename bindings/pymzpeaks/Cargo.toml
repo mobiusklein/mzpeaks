@@ -13,4 +13,4 @@ serde-support = ["mzpeaks/serde-support"]
 
 [dependencies]
 pyo3 = "0.18.1"
-mzpeaks = { path = "../../", version = "0.7.0" }
+mzpeaks = { path = "../../" }
