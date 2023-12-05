@@ -258,6 +258,14 @@ macro_rules! impl_slicing {
             }
         }
 
+        impl<$($args)+> std::ops::Index<std::ops::RangeFull> for $t {
+            type Output = [<Self as std::ops::Index<usize>>::Output];
+
+            fn index(&self, _: std::ops::RangeFull) -> &Self::Output {
+                <Self as std::ops::Index<std::ops::Range<usize>>>::index(self, 0..self.len())
+            }
+        }
+
     };
 }
 
