@@ -335,6 +335,14 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     fn _push(&mut self, peak: P) {
         self.peaks.push(peak);
     }
+
+    pub fn as_slice(&self) -> &[P] {
+        self.peaks.as_slice()
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [P] {
+        self.peaks.as_mut_slice()
+    }
 }
 
 impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
