@@ -139,3 +139,9 @@ impl ops::Mul<f64> for Tolerance {
         }
     }
 }
+
+impl From<f64> for Tolerance {
+    fn from(value: f64) -> Self {
+        Self::PPM(value)
+    }
+}
