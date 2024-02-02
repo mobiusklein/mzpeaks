@@ -482,6 +482,16 @@ impl<P: IndexedCoordinate<C>, C> Extend<P> for PeakSetVec<P, C> {
     }
 }
 
+
+impl<P: IndexedCoordinate<C>, C> IntoIterator for PeakSetVec<P, C> {
+    type Item = P;
+    type IntoIter = std::vec::IntoIter<P>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.peaks.into_iter()
+    }
+}
+
 impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &'a PeakSetVec<P, C> {
     type Item = &'a P;
     type IntoIter = PeakSetIter<'a, P, C>;
