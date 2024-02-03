@@ -35,13 +35,14 @@ pub mod prelude;
 mod test_data;
 
 pub use crate::coordinate::{
-    CoordinateDimension, CoordinateLike, IndexType, IndexedCoordinate, MZLocated, Mass,
-    MassLocated, MZ, CoordinateLikeMut
+    CoordinateDimension, CoordinateLike, CoordinateLikeMut, CoordinateRange,
+    CoordinateRangeParseError, IndexType, IndexedCoordinate, IonMobility, MZLocated, Mass,
+    MassLocated, Time, MZ,
 };
 pub use crate::mass_error::{Tolerance, ToleranceParsingError};
 pub use crate::peak::{
     CentroidLike, CentroidPeak, DeconvolutedCentroidLike, DeconvolutedPeak, IntensityMeasurement,
-    KnownCharge, IntensityMeasurementMut, KnownChargeMut
+    IntensityMeasurementMut, KnownCharge, KnownChargeMut,
 };
 pub use crate::peak_set::{
     DeconvolutedPeakSet, MZPeakSetType, MassPeakSetType, PeakCollection, PeakSet,

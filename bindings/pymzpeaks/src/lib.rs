@@ -7,7 +7,7 @@ use pyo3::pyclass::CompareOp;
 use pyo3::types::{PySlice, PyLong, PyFloat, PyString, PyList};
 use pyo3::prelude::*;
 
-use mzpeaks::{prelude::*, CoordinateDimension, IndexType};
+use mzpeaks::{prelude::*, IndexType};
 use mzpeaks::{
     CentroidPeak,
     DeconvolutedPeak,

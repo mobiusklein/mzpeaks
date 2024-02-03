@@ -1,3 +1,12 @@
+use std::{
+    error::Error,
+    fmt::Display,
+    marker::PhantomData,
+    num::ParseFloatError,
+    ops::{Bound, Range, RangeBounds, RangeTo},
+    str::FromStr,
+};
+
 #[derive(Default, Debug, Clone, Copy)]
 /// The Mass To Charge Ratio (m/z) coordinate system
 pub struct MZ {}
@@ -59,8 +68,7 @@ pub trait CoordinateLike<T>: PartialOrd {
     fn coordinate(&self) -> f64;
 }
 
-
-pub trait CoordinateLikeMut<T> : CoordinateLike<T> {
+pub trait CoordinateLikeMut<T>: CoordinateLike<T> {
     fn coordinate_mut(&mut self) -> &mut f64;
 }
 
@@ -109,11 +117,165 @@ pub trait IndexedCoordinate<T>: CoordinateLike<T> {
     fn set_index(&mut self, index: IndexType);
 }
 
-
 impl<T: IndexedCoordinate<C>, C> IndexedCoordinate<C> for &T {
     fn get_index(&self) -> IndexType {
         (*self).get_index()
     }
 
     fn set_index(&mut self, _index: IndexType) {}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct CoordinateRange<C> {
+    pub start: Option<f64>,
+    pub end: Option<f64>,
+    coord: PhantomData<C>,
+}
+
+impl<C> CoordinateRange<C> {
+    pub fn new(start: Option<f64>, end: Option<f64>) -> Self {
+        Self {
+            start,
+            end,
+            coord: PhantomData,
+        }
+    }
+
+    pub fn contains<T: CoordinateLike<C>>(&self, point: &T) -> bool {
+        let x = CoordinateLike::<C>::coordinate(point);
+        RangeBounds::<f64>::contains(&self, &x)
+    }
+}
+
+impl<C> Default for CoordinateRange<C> {
+    fn default() -> Self {
+        Self {
+            start: None,
+            end: None,
+            coord: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum CoordinateRangeParseError {
+    MalformedStart(ParseFloatError),
+    MalformedEnd(ParseFloatError),
+}
+
+impl Display for CoordinateRangeParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CoordinateRangeParseError::MalformedStart(e) => {
+                write!(f, "Failed to parse range start {e}")
+            }
+            CoordinateRangeParseError::MalformedEnd(e) => {
+                write!(f, "Failed to parse range end {e}")
+            }
+        }
+    }
+}
+
+impl Error for CoordinateRangeParseError {}
+
+impl<C> FromStr for CoordinateRange<C> {
+    type Err = CoordinateRangeParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut tokens = if s.contains(' ') {
+            s.split(' ')
+        } else if s.contains(':') {
+            s.split(':')
+        } else if s.contains('-') {
+            s.split('-')
+        } else {
+            s.split(' ')
+        };
+        let start_s = tokens.next().unwrap();
+        let start_t = if start_s == "" {
+            None
+        } else {
+            match start_s.parse() {
+                Ok(val) => Some(val),
+                Err(e) => return Err(CoordinateRangeParseError::MalformedStart(e)),
+            }
+        };
+        let end_s = tokens.next().unwrap();
+        let end_t = if end_s == "" {
+            None
+        } else {
+            match end_s.parse() {
+                Ok(val) => Some(val),
+                Err(e) => return Err(CoordinateRangeParseError::MalformedEnd(e)),
+            }
+        };
+        Ok(CoordinateRange {
+            start: start_t,
+            end: end_t,
+            coord: PhantomData,
+        })
+    }
+}
+
+impl<C> From<RangeTo<f64>> for CoordinateRange<C> {
+    fn from(value: RangeTo<f64>) -> Self {
+        Self::new(None, Some(value.end))
+    }
+}
+
+impl<C> From<Range<f64>> for CoordinateRange<C> {
+    fn from(value: Range<f64>) -> Self {
+        Self::new(Some(value.start), Some(value.end))
+    }
+}
+
+impl<C> RangeBounds<f64> for CoordinateRange<C> {
+    fn start_bound(&self) -> Bound<&f64> {
+        if let Some(start) = self.start.as_ref() {
+            Bound::Included(start)
+        } else {
+            Bound::Unbounded
+        }
+    }
+
+    fn end_bound(&self) -> Bound<&f64> {
+        if let Some(end) = self.end.as_ref() {
+            Bound::Included(end)
+        } else {
+            Bound::Unbounded
+        }
+    }
+}
+
+impl<C> RangeBounds<f64> for &CoordinateRange<C> {
+    fn start_bound(&self) -> Bound<&f64> {
+        (*self).start_bound()
+    }
+
+    fn end_bound(&self) -> Bound<&f64> {
+        (*self).end_bound()
+    }
+}
+
+impl<C> From<(f64, f64)> for CoordinateRange<C> {
+    fn from(value: (f64, f64)) -> Self {
+        Self::new(Some(value.0), Some(value.1))
+    }
+}
+
+impl<C> From<CoordinateRange<C>> for Range<f64> {
+    fn from(value: CoordinateRange<C>) -> Self {
+        let start = match value.start {
+            Some(x) => x,
+            None => 0.0,
+        };
+
+        let end = match value.end {
+            Some(x) => x,
+            None => f64::INFINITY,
+        };
+
+        let r = start..end;
+        r
+    }
 }
