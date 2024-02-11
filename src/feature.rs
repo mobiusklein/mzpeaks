@@ -410,3 +410,37 @@ impl<X, Y> IntoIterator for Feature<X, Y> {
         IntoIter::new(self)
     }
 }
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{CentroidPeak, MZLocated};
+
+    #[test]
+    fn test_build() {
+        let mut x = MZLCMSFeature::empty();
+
+        let points = vec![
+            (CentroidPeak::new(204.08, 3432.1, 0), 0.1),
+            (CentroidPeak::new(204.07, 7251.9, 0), 0.2),
+            (CentroidPeak::new(204.08, 5261.7, 0), 0.3),
+        ];
+
+        x.extend(points.iter().cloned());
+        assert_eq!(x.len(), 3);
+
+        let y: f32 = points.iter().map(|p| p.0.intensity()).sum();
+        assert!((x.intensity() - y).abs() < 1e-6);
+
+        let mz = 204.07545212;
+        assert!((x.mz() - mz).abs() < 1e-6);
+
+        let area = 1159.879980;
+        assert!((x.area() - area).abs() < 1e-6);
+
+        assert_eq!(x.iter().len(), 3);
+
+        assert_eq!(x, points.into_iter().collect());
+    }
+}
