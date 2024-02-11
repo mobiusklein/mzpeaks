@@ -30,6 +30,7 @@ pub mod mass_error;
 pub mod peak;
 pub mod peak_index;
 pub mod peak_set;
+pub mod feature;
 pub mod prelude;
 #[cfg(test)]
 mod test_data;
