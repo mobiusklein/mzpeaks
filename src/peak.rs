@@ -18,7 +18,7 @@ pub trait IntensityMeasurement {
     fn intensity(&self) -> f32;
 }
 
-pub trait IntensityMeasurementMut : IntensityMeasurement {
+pub trait IntensityMeasurementMut: IntensityMeasurement {
     fn intensity_mut(&mut self) -> &mut f32;
 }
 
@@ -39,7 +39,6 @@ impl<T: IntensityMeasurementMut> IntensityMeasurementMut for &mut T {
         IntensityMeasurementMut::intensity_mut(*self)
     }
 }
-
 
 /// A [`CentroidLike`] entity is indexed in m/z coordinate space and
 /// is an [`IntensityMeasurement`]
@@ -65,7 +64,7 @@ impl<T: KnownCharge> KnownCharge for &T {
     }
 }
 
-pub trait KnownChargeMut : KnownCharge {
+pub trait KnownChargeMut: KnownCharge {
     fn charge_mut(&mut self) -> &mut i32;
 }
 
@@ -215,6 +214,15 @@ pub struct DeconvolutedPeak {
 }
 
 impl DeconvolutedPeak {
+    pub fn new(neutral_mass: f64, intensity: f32, charge: i32, index: IndexType) -> Self {
+        Self {
+            neutral_mass,
+            intensity,
+            charge,
+            index,
+        }
+    }
+
     pub fn mz(&self) -> f64 {
         let charge_carrier: f64 = 1.007276;
         let charge = self.charge as f64;

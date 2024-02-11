@@ -2,5 +2,6 @@
 
 pub use crate::coordinate::{CoordinateLike, IndexedCoordinate, MZLocated, MassLocated};
 pub use crate::peak::{CentroidLike, DeconvolutedCentroidLike, IntensityMeasurement, KnownCharge, KnownChargeMut, IntensityMeasurementMut};
+pub use crate::feature::TimeInterval;
 pub use crate::peak_set::PeakCollection;
 pub use crate::mass_error::Tolerance;

@@ -1,12 +1,26 @@
 use core::slice;
 use std::{cmp::Ordering, marker::PhantomData};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::{
-    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ},
-    IntensityMeasurement,
+    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ}, CentroidPeak, CoordinateRange, DeconvolutedPeak, IntensityMeasurement, KnownCharge, MassLocated
 };
 
+pub trait TimeInterval<T> {
+    fn start_time(&self) -> Option<f64>;
+    fn end_time(&self) -> Option<f64>;
+    fn apex_time(&self) -> Option<f64>;
+    fn area(&self) -> f64;
+
+    fn as_range(&self) -> CoordinateRange<T> {
+        CoordinateRange::new(self.start_time(), self.end_time())
+    }
+}
+
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Feature<X, Y> {
     x: Vec<f64>,
     y: Vec<f64>,
@@ -208,44 +222,50 @@ impl<X, Y> IntensityMeasurement for Feature<X, Y> {
     }
 }
 
-impl<X> Feature<X, Time> {
-    pub fn apex_time(&self) -> Option<f64> {
+impl<X> TimeInterval<Time> for Feature<X, Time> {
+    fn apex_time(&self) -> Option<f64> {
         self.apex_y()
     }
 
-    pub fn area(&self) -> f64 {
+    fn area(&self) -> f64 {
         self.integrate_y()
     }
 
-    pub fn start_time(&self) -> Option<f64> {
+    fn end_time(&self) -> Option<f64> {
+        self.y.last().copied()
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        self.y.first().copied()
+    }
+}
+
+impl<X> TimeInterval<IonMobility> for Feature<X, IonMobility> {
+    fn apex_time(&self) -> Option<f64> {
+        self.apex_y()
+    }
+
+    fn area(&self) -> f64 {
+        self.integrate_y()
+    }
+
+    fn start_time(&self) -> Option<f64> {
         self.y.first().copied()
     }
 
-    pub fn end_time(&self) -> Option<f64> {
+    fn end_time(&self) -> Option<f64> {
         self.y.last().copied()
     }
 }
 
-impl<X> Feature<X, IonMobility> {
-    pub fn apex_time(&self) -> Option<f64> {
-        self.apex_y()
-    }
-
-    pub fn area(&self) -> f64 {
-        self.integrate_y()
-    }
-
-    pub fn start_time(&self) -> Option<f64> {
-        self.y.first().copied()
-    }
-
-    pub fn end_time(&self) -> Option<f64> {
-        self.y.last().copied()
+impl<Y> Feature<MZ, Y> {
+    pub fn iter_peaks(&self) -> MZPeakIter<'_, Y> {
+        MZPeakIter::new(self)
     }
 }
 
 pub type MZLCMSFeature = Feature<MZ, Time>;
-pub type MassLCMSFeature = Feature<Mass, Time>;
+pub type MZIMSFeature = Feature<MZ, IonMobility>;
 
 pub struct Iter<'a, X, Y> {
     source: &'a Feature<X, Y>,
@@ -293,6 +313,56 @@ impl<'a, X, Y> Iter<'a, X, Y> {
             xiter: source.x.iter(),
             yiter: source.y.iter(),
             ziter: source.z.iter(),
+        }
+    }
+}
+
+pub struct MZPeakIter<'a, Y> {
+    source: &'a Feature<MZ, Y>,
+    xiter: slice::Iter<'a, f64>,
+    yiter: slice::Iter<'a, f64>,
+    ziter: slice::Iter<'a, f32>,
+}
+
+impl<'a, Y> MZPeakIter<'a, Y> {
+    pub fn new(source: &'a Feature<MZ, Y>) -> Self {
+        Self {
+            source,
+            xiter: source.x.iter(),
+            yiter: source.y.iter(),
+            ziter: source.z.iter(),
+        }
+    }
+}
+
+impl<'a, Y> Iterator for MZPeakIter<'a, Y> {
+    type Item = (CentroidPeak, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let x = self.xiter.next();
+        let y = self.yiter.next();
+        let z = self.ziter.next();
+        match (x, y, z) {
+            (Some(x), Some(y), Some(z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
+            _ => None,
+        }
+    }
+}
+
+impl<'a, Y> ExactSizeIterator for MZPeakIter<'a, Y> {
+    fn len(&self) -> usize {
+        self.source.len()
+    }
+}
+
+impl<'a, Y> DoubleEndedIterator for MZPeakIter<'a, Y> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let x = self.xiter.next_back();
+        let y = self.yiter.next_back();
+        let z = self.ziter.next_back();
+        match (x, y, z) {
+            (Some(x), Some(y), Some(z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
+            _ => None,
         }
     }
 }
@@ -411,14 +481,233 @@ impl<X, Y> IntoIterator for Feature<X, Y> {
     }
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct ChargedFeature<X, Y> {
+    pub feature: Feature<X, Y>,
+    pub charge: i32,
+}
+
+impl<X, Y> Extend<(f64, f64, f32)> for ChargedFeature<X, Y> {
+    fn extend<T: IntoIterator<Item = (f64, f64, f32)>>(&mut self, iter: T) {
+        <Feature<X, Y> as Extend<(f64, f64, f32)>>::extend(&mut self.feature, iter)
+    }
+}
+
+impl<P: CoordinateLike<X> + IntensityMeasurement, X, Y> Extend<(P, f64)> for ChargedFeature<X, Y> {
+    fn extend<T: IntoIterator<Item = (P, f64)>>(&mut self, iter: T) {
+        <Feature<X, Y> as Extend<(P, f64)>>::extend(&mut self.feature, iter)
+    }
+}
+
+impl<X, Y> IntensityMeasurement for ChargedFeature<X, Y> {
+    fn intensity(&self) -> f32 {
+        <Feature<X, Y> as IntensityMeasurement>::intensity(&self.feature)
+    }
+}
+
+impl<X, Y> ChargedFeature<X, Y> {
+    pub fn new(feature: Feature<X, Y>, charge: i32) -> Self {
+        Self { feature, charge }
+    }
+
+    pub fn empty(charge: i32) -> Self {
+        Self {
+            feature: Feature::empty(),
+            charge,
+        }
+    }
+
+    pub fn iter(&self) -> Iter<'_, X, Y> {
+        self.feature.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, X, Y> {
+        self.feature.iter_mut()
+    }
+
+    pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
+        self.feature.push(pt, time)
+    }
+
+    pub fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        self.feature.push_raw(x, y, z)
+    }
+
+    pub fn len(&self) -> usize {
+        self.feature.len()
+    }
+}
+
+impl<Y> ChargedFeature<Mass, Y> {
+    pub fn iter_peaks(&self) -> DeconvolutedPeakIter<'_, Y> {
+        DeconvolutedPeakIter::new(self)
+    }
+}
+
+impl<X> TimeInterval<Time> for ChargedFeature<X, Time> {
+    fn apex_time(&self) -> Option<f64> {
+        self.feature.apex_time()
+    }
+
+    fn area(&self) -> f64 {
+        self.feature.area()
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        self.feature.start_time()
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        self.feature.end_time()
+    }
+}
+
+impl<X> TimeInterval<IonMobility> for ChargedFeature<X, IonMobility> {
+    fn apex_time(&self) -> Option<f64> {
+        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::apex_time(&self.feature)
+    }
+
+    fn area(&self) -> f64 {
+        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::area(&self.feature)
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::start_time(&self.feature)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::end_time(&self.feature)
+    }
+}
+
+impl<X, Y> PartialEq for ChargedFeature<X, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.feature == other.feature && self.charge == other.charge
+    }
+}
+
+impl<X, Y> PartialOrd for ChargedFeature<X, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.feature.partial_cmp(&other.feature) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.charge.partial_cmp(&other.charge)
+    }
+}
+
+impl<Y> CoordinateLike<MZ> for ChargedFeature<MZ, Y> {
+    fn coordinate(&self) -> f64 {
+        <Feature<MZ, Y> as CoordinateLike<MZ>>::coordinate(&self.feature)
+    }
+}
+
+impl<Y> CoordinateLike<MZ> for ChargedFeature<Mass, Y> {
+    fn coordinate(&self) -> f64 {
+        let charge_carrier: f64 = 1.007276;
+        let charge = self.charge as f64;
+        (self.neutral_mass() + charge_carrier * charge) / charge
+    }
+}
+
+impl<Y> CoordinateLike<Mass> for ChargedFeature<Mass, Y> {
+    fn coordinate(&self) -> f64 {
+        <Feature<Mass, Y> as CoordinateLike<Mass>>::coordinate(&self.feature)
+    }
+}
+
+impl<X, Y> KnownCharge for ChargedFeature<X, Y> {
+    fn charge(&self) -> i32 {
+        self.charge
+    }
+}
+
+impl<X, Y> AsRef<Feature<X, Y>> for ChargedFeature<X, Y> {
+    fn as_ref(&self) -> &Feature<X, Y> {
+        &self.feature
+    }
+}
+
+impl<X, Y> AsMut<Feature<X, Y>> for ChargedFeature<X, Y> {
+    fn as_mut(&mut self) -> &mut Feature<X, Y> {
+        &mut self.feature
+    }
+}
+
+impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterator<(P, f64)>
+    for ChargedFeature<X, Y>
+{
+    fn from_iter<T: IntoIterator<Item = (P, f64)>>(iter: T) -> Self {
+        let mut it = iter.into_iter();
+        if let Some((peak, time)) = it.next() {
+            let mut this = Self::empty(peak.charge());
+            this.push(&peak, time);
+            this.extend(it);
+            this
+        } else {
+            Self::empty(0)
+        }
+    }
+}
+
+pub type DeconvolvedLCMSFeature = ChargedFeature<Mass, Time>;
+pub type DeconvolvedIMSFeature = ChargedFeature<Mass, IonMobility>;
+
+pub struct DeconvolutedPeakIter<'a, Y> {
+    source: &'a ChargedFeature<Mass, Y>,
+    point_iter: Iter<'a, Mass, Y>,
+}
+
+impl<'a, Y> DeconvolutedPeakIter<'a, Y> {
+    pub fn new(source: &'a ChargedFeature<Mass, Y>) -> Self {
+        Self {
+            source,
+            point_iter: source.iter(),
+        }
+    }
+}
+
+impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
+    type Item = (DeconvolutedPeak, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((mass, time, intensity)) = self.point_iter.next() {
+            Some((
+                DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
+                *time,
+            ))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, Y> ExactSizeIterator for DeconvolutedPeakIter<'a, Y> {
+    fn len(&self) -> usize {
+        self.source.len()
+    }
+}
+
+impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some((mass, time, intensity)) = self.point_iter.next_back() {
+            Some((
+                DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
+                *time,
+            ))
+        } else {
+            None
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{CentroidPeak, MZLocated};
+    use crate::{CentroidPeak, DeconvolutedPeak, MZLocated};
 
     #[test]
-    fn test_build() {
+    fn test_build_raw() {
         let mut x = MZLCMSFeature::empty();
 
         let points = vec![
@@ -440,6 +729,46 @@ mod test {
         assert!((x.area() - area).abs() < 1e-6);
 
         assert_eq!(x.iter().len(), 3);
+
+        if let Some((pt, t)) = x.iter_peaks().next() {
+            let (rpt, rt) = &points[0];
+            assert_eq!(pt, rpt);
+            assert_eq!(t, *rt);
+        }
+
+        assert_eq!(x, points.into_iter().collect());
+    }
+
+    #[test]
+    fn test_build_charged() {
+        let mut x = DeconvolvedLCMSFeature::empty(1);
+
+        let points = vec![
+            (DeconvolutedPeak::new(203.08, 3432.1, 1, 0), 0.1),
+            (DeconvolutedPeak::new(203.07, 7251.9, 1, 0), 0.2),
+            (DeconvolutedPeak::new(203.08, 5261.7, 1, 0), 0.3),
+        ];
+
+        x.extend(points.iter().cloned());
+
+        assert_eq!(x.len(), 3);
+
+        let y: f32 = points.iter().map(|p| p.0.intensity()).sum();
+        assert!((x.intensity() - y).abs() < 1e-6);
+
+        let mass = 203.07545212;
+        assert!((x.neutral_mass() - mass).abs() < 1e-6);
+
+        let area = 1159.879980;
+        assert!((x.area() - area).abs() < 1e-6);
+
+        assert_eq!(x.iter().len(), 3);
+
+        if let Some((pt, t)) = x.iter_peaks().next() {
+            let (rpt, rt) = &points[0];
+            assert_eq!(pt, rpt);
+            assert_eq!(t, *rt);
+        }
 
         assert_eq!(x, points.into_iter().collect());
     }
