@@ -145,6 +145,10 @@ impl<C> CoordinateRange<C> {
         let x = CoordinateLike::<C>::coordinate(point);
         RangeBounds::<f64>::contains(&self, &x)
     }
+
+    pub fn contains_raw(&self, x: &f64) -> bool {
+        RangeBounds::<f64>::contains(&self, x)
+    }
 }
 
 impl<C> Default for CoordinateRange<C> {

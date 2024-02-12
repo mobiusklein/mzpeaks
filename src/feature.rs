@@ -5,7 +5,9 @@ use std::{cmp::Ordering, marker::PhantomData};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ}, CentroidPeak, CoordinateRange, DeconvolutedPeak, IntensityMeasurement, KnownCharge, MassLocated
+    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ},
+    CentroidPeak, CoordinateRange, DeconvolutedPeak, IntensityMeasurement, KnownCharge,
+    MassLocated,
 };
 
 pub trait TimeInterval<T> {
@@ -17,6 +19,22 @@ pub trait TimeInterval<T> {
     fn as_range(&self) -> CoordinateRange<T> {
         CoordinateRange::new(self.start_time(), self.end_time())
     }
+
+    fn spans(&self, time: f64) -> bool {
+        let range = self.as_range();
+        range.contains_raw(&time)
+    }
+}
+
+pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> {
+    fn len(&self) -> usize;
+    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)>;
+}
+
+pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)>;
+    fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64);
+    fn push_raw(&mut self, x: f64, y: f64, z: f32);
 }
 
 #[derive(Debug, Default, Clone)]
@@ -267,6 +285,30 @@ impl<Y> Feature<MZ, Y> {
 pub type MZLCMSFeature = Feature<MZ, Time>;
 pub type MZIMSFeature = Feature<MZ, IonMobility>;
 
+impl<X, Y> FeatureLike<X, Y> for Feature<X, Y> where Feature<X, Y> : TimeInterval<Y> {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+        self.iter()
+    }
+}
+
+impl<X, Y> FeatureLikeMut<X, Y> for Feature<X, Y> where Feature<X, Y> : TimeInterval<Y> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
+        self.iter_mut()
+    }
+
+    fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
+        self.push(pt, time)
+    }
+
+    fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        self.push_raw(x, y, z)
+    }
+}
+
 pub struct Iter<'a, X, Y> {
     source: &'a Feature<X, Y>,
     xiter: slice::Iter<'a, f64>,
@@ -376,7 +418,7 @@ pub struct IterMut<'a, X, Y> {
 }
 
 impl<'a, X, Y> Iterator for IterMut<'a, X, Y> {
-    type Item = (&'a f64, &'a f64, &'a f32);
+    type Item = (&'a mut f64, &'a mut f64, &'a mut f32);
 
     fn next(&mut self) -> Option<Self::Item> {
         let x = self.xiter.next();
@@ -487,6 +529,48 @@ pub struct ChargedFeature<X, Y> {
     pub charge: i32,
 }
 
+impl<X, Y> FeatureLikeMut<X, Y> for ChargedFeature<X, Y> where Feature<X, Y> : FeatureLikeMut<X, Y> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
+        <Feature<X, Y> as FeatureLikeMut<X, Y>>::iter_mut(&mut self.feature)
+    }
+
+    fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
+        <Feature<X, Y> as FeatureLikeMut<X, Y>>::push(&mut self.feature, pt, time)
+    }
+
+    fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        <Feature<X, Y> as FeatureLikeMut<X, Y>>::push_raw(&mut self.feature, x, y, z)
+    }
+}
+
+impl<X, Y> TimeInterval<Y> for ChargedFeature<X, Y> where Feature<X, Y> : TimeInterval<Y> {
+    fn apex_time(&self) -> Option<f64> {
+        <Feature<X, Y> as TimeInterval<Y>>::apex_time(&self.feature)
+    }
+
+    fn area(&self) -> f64 {
+        <Feature<X, Y> as TimeInterval<Y>>::area(&self.feature)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        <Feature<X, Y> as TimeInterval<Y>>::end_time(&self.feature)
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        <Feature<X, Y> as TimeInterval<Y>>::start_time(&self.feature)
+    }
+}
+
+impl<X, Y> FeatureLike<X, Y> for ChargedFeature<X, Y> where Feature<X, Y> : FeatureLike<X, Y> {
+    fn len(&self) -> usize {
+        <Feature<X, Y> as FeatureLike<X, Y>>::len(&self.feature)
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+        <Feature<X, Y> as FeatureLike<X, Y>>::iter(&self.feature)
+    }
+}
+
 impl<X, Y> Extend<(f64, f64, f32)> for ChargedFeature<X, Y> {
     fn extend<T: IntoIterator<Item = (f64, f64, f32)>>(&mut self, iter: T) {
         <Feature<X, Y> as Extend<(f64, f64, f32)>>::extend(&mut self.feature, iter)
@@ -541,42 +625,6 @@ impl<X, Y> ChargedFeature<X, Y> {
 impl<Y> ChargedFeature<Mass, Y> {
     pub fn iter_peaks(&self) -> DeconvolutedPeakIter<'_, Y> {
         DeconvolutedPeakIter::new(self)
-    }
-}
-
-impl<X> TimeInterval<Time> for ChargedFeature<X, Time> {
-    fn apex_time(&self) -> Option<f64> {
-        self.feature.apex_time()
-    }
-
-    fn area(&self) -> f64 {
-        self.feature.area()
-    }
-
-    fn start_time(&self) -> Option<f64> {
-        self.feature.start_time()
-    }
-
-    fn end_time(&self) -> Option<f64> {
-        self.feature.end_time()
-    }
-}
-
-impl<X> TimeInterval<IonMobility> for ChargedFeature<X, IonMobility> {
-    fn apex_time(&self) -> Option<f64> {
-        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::apex_time(&self.feature)
-    }
-
-    fn area(&self) -> f64 {
-        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::area(&self.feature)
-    }
-
-    fn start_time(&self) -> Option<f64> {
-        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::start_time(&self.feature)
-    }
-
-    fn end_time(&self) -> Option<f64> {
-        <Feature<X, IonMobility> as TimeInterval<IonMobility>>::end_time(&self.feature)
     }
 }
 
@@ -697,6 +745,161 @@ impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
             ))
         } else {
             None
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SimpleFeature<X, Y> {
+    pub label: f64,
+    y: Vec<f64>,
+    z: Vec<f32>,
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>
+}
+
+impl<X, Y> SimpleFeature<X, Y> {
+    pub fn empty(label: f64) -> Self {
+        Self {
+            label,
+            y: Vec::new(),
+            z: Vec::new(),
+            _x: PhantomData,
+            _y: PhantomData
+        }
+    }
+
+    pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
+        self.y.push(time);
+        self.z.push(pt.intensity());
+    }
+
+    pub fn push_raw(&mut self, _x: f64, y: f64, z: f32) {
+        self.y.push(y);
+        self.z.push(z);
+    }
+
+    fn idxmax(&self) -> Option<usize> {
+        let pt = self
+            .z
+            .iter()
+            .enumerate()
+            .reduce(|(best_i, best), (current_i, current)| {
+                if *current > *best {
+                    (current_i, current)
+                } else {
+                    (best_i, best)
+                }
+            });
+
+        pt.and_then(|(i, _)| Some(i))
+    }
+
+    fn apex_y(&self) -> Option<f64> {
+        self.idxmax().and_then(|i| self.y.get(i).copied())
+    }
+}
+
+impl<X, Y> PartialEq for SimpleFeature<X, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.label == other.label && self.y == other.y && self.z == other.z && self._x == other._x && self._y == other._y
+    }
+}
+
+impl<X, Y> PartialOrd for SimpleFeature<X, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.label.partial_cmp(&other.label) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.y.partial_cmp(&other.y) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.z.partial_cmp(&other.z)
+    }
+}
+
+impl<X, Y> CoordinateLike<X> for SimpleFeature<X, Y> {
+    fn coordinate(&self) -> f64 {
+        self.label
+    }
+}
+
+impl<X, Y> TimeInterval<Y> for SimpleFeature<X, Y> {
+    fn start_time(&self) -> Option<f64> {
+        self.y.first().copied()
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        self.y.last().copied()
+    }
+
+    fn apex_time(&self) -> Option<f64> {
+        self.apex_y()
+    }
+
+    fn area(&self) -> f64 {
+        let mut it = self.y.iter().zip(self.z.iter());
+        if let Some((first_y, first_z)) = it.next() {
+            let (_y, _z, acc) =
+                it.fold((first_y, first_z, 0.0), |(last_y, last_z, acc), (y, z)| {
+                    let step = (last_z + z) / 2.0;
+                    let dy = y - last_y;
+                    (y, z, acc + (step as f64 * dy))
+                });
+            acc
+        } else {
+            0.0
+        }
+    }
+}
+
+impl<X, Y> IntensityMeasurement for SimpleFeature<X, Y> {
+    fn intensity(&self) -> f32 {
+        self.z.iter().sum()
+    }
+}
+
+impl<X, Y> FeatureLike<X, Y> for SimpleFeature<X, Y> {
+    fn len(&self) -> usize {
+        self.y.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+        self.y.iter().zip(self.z.iter()).map(|(y, z)| (&self.label, y, z))
+    }
+}
+
+impl<X, Y> Extend<(f64, f64, f32)> for SimpleFeature<X, Y> {
+    fn extend<T: IntoIterator<Item = (f64, f64, f32)>>(&mut self, iter: T) {
+        for (_x, y, z) in iter {
+            self.y.push(y);
+            self.z.push(z);
+        }
+    }
+}
+
+impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement> Extend<(P, f64)> for SimpleFeature<X, Y> {
+    fn extend<T: IntoIterator<Item = (P, f64)>>(&mut self, iter: T) {
+        for (x, t) in iter {
+            self.push(&x, t)
+        }
+    }
+}
+
+impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterator<(P, f64)>
+    for SimpleFeature<X, Y>
+{
+    fn from_iter<T: IntoIterator<Item = (P, f64)>>(iter: T) -> Self {
+        let mut it = iter.into_iter();
+        if let Some((peak, time)) = it.next() {
+            let mut this = Self::empty(peak.coordinate());
+            this.push(&peak, time);
+            this.extend(it);
+            this
+        } else {
+            Self::empty(0.0)
         }
     }
 }
