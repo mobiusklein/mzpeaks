@@ -10,6 +10,27 @@ use crate::{
     MassLocated,
 };
 
+#[derive(PartialEq, PartialOrd)]
+struct NonNan(f64);
+
+impl NonNan {
+    fn new(val: f64) -> Option<NonNan> {
+        if val.is_nan() {
+            None
+        } else {
+            Some(NonNan(val))
+        }
+    }
+}
+
+impl Eq for NonNan {}
+
+impl Ord for NonNan {
+    fn cmp(&self, other: &NonNan) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 pub trait TimeInterval<T> {
     fn start_time(&self) -> Option<f64>;
     fn end_time(&self) -> Option<f64>;
@@ -24,17 +45,91 @@ pub trait TimeInterval<T> {
         let range = self.as_range();
         range.contains_raw(&time)
     }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64>;
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        let mut best_i = None;
+        let mut best_err = f64::INFINITY;
+        for (i, t) in self.iter_time().enumerate() {
+            let err = (t - time).abs();
+            let err_abs = err.abs();
+            if err_abs < best_err {
+                best_i = Some(i);
+                best_err = err_abs;
+            }
+            // We passed the upper end of the error range since time is sorted
+            // so stop searching
+            if err > best_err {
+                break;
+            }
+        }
+        (best_i, best_err)
+    }
 }
 
-pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> {
+pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + CoordinateLike<X> {
     fn len(&self) -> usize;
     fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)>;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)>;
     fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64);
     fn push_raw(&mut self, x: f64, y: f64, z: f32);
+}
+
+trait CoArrayOps {
+    fn weighted_average(&self, x: &[f64], w: &[f32]) -> f64 {
+        let (acc, norm) = x
+            .iter()
+            .zip(w.iter())
+            .fold((0.0, 0.0), |(acc, norm), (x, z)| {
+                let norm = norm + *z as f64;
+                let acc = acc + *x * *z as f64;
+                (acc, norm)
+            });
+        if norm == 0.0 {
+            return 0.0;
+        }
+        acc / norm
+    }
+
+    fn trapezoid_integrate(&self, y: &[f64], w: &[f32]) -> f64 {
+        let mut it = y.iter().zip(w.iter());
+        if let Some((first_y, first_z)) = it.next() {
+            let (_y, _z, acc) =
+                it.fold((first_y, first_z, 0.0), |(last_y, last_z, acc), (y, z)| {
+                    let step = (last_z + z) / 2.0;
+                    let dy = y - last_y;
+                    (y, z, acc + (step as f64 * dy))
+                });
+            acc
+        } else {
+            0.0
+        }
+    }
+
+    fn idxmax(&self, w: &[f32]) -> Option<usize> {
+        let pt = w
+            .iter()
+            .enumerate()
+            .reduce(|(best_i, best), (current_i, current)| {
+                if *current > *best {
+                    (current_i, current)
+                } else {
+                    (best_i, best)
+                }
+            });
+        pt.map(|(i, _)| i)
+    }
+
+    fn apex_of(&self, x: &[f64], w: &[f32]) -> Option<f64> {
+        self.idxmax(w).and_then(|i| x.get(i).copied())
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -47,6 +142,8 @@ pub struct Feature<X, Y> {
     _y: PhantomData<Y>,
 }
 
+impl<X, Y> CoArrayOps for Feature<X, Y> {}
+
 impl<X, Y> Feature<X, Y> {
     pub fn new(x: Vec<f64>, y: Vec<f64>, z: Vec<f32>) -> Self {
         Self {
@@ -58,7 +155,7 @@ impl<X, Y> Feature<X, Y> {
         }
     }
 
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             x: Vec::new(),
             y: Vec::new(),
@@ -68,75 +165,96 @@ impl<X, Y> Feature<X, Y> {
         }
     }
 
-    fn weighted_average(&self, x: &[f64]) -> f64 {
-        let (acc, norm) = x
-            .iter()
-            .zip(self.z.iter())
-            .fold((0.0, 0.0), |(acc, norm), (x, z)| {
-                let norm = norm + *z as f64;
-                let acc = acc + *x * *z as f64;
-                (acc, norm)
-            });
-        if norm == 0.0 {
-            return 0.0;
-        }
-        acc / norm
-    }
-
     fn coordinate_x(&self) -> f64 {
-        self.weighted_average(&self.x)
+        self.weighted_average(&self.x, &self.z)
     }
 
     fn coordinate_y(&self) -> f64 {
-        self.weighted_average(&self.y)
+        self.weighted_average(&self.y, &self.z)
     }
 
     pub fn len(&self) -> usize {
         self.x.len()
     }
 
-    pub fn transpose(self) -> Feature<Y, X> {
-        Feature::<Y, X> {
-            x: self.y,
-            y: self.x,
-            z: self.z,
-            _x: self._y,
-            _y: self._x,
-        }
-    }
-
-    fn idxmax(&self) -> Option<usize> {
-        let pt = self
-            .z
-            .iter()
-            .enumerate()
-            .reduce(|(best_i, best), (current_i, current)| {
-                if *current > *best {
-                    (current_i, current)
-                } else {
-                    (best_i, best)
-                }
-            });
-
-        pt.and_then(|(i, _)| Some(i))
-    }
-
     fn apex_y(&self) -> Option<f64> {
-        self.idxmax().and_then(|i| self.y.get(i).copied())
+        self.apex_of(&self.y, &self.z)
+    }
+
+    fn sort_by_y(&mut self) {
+        let mut indices: Vec<_> = (0..self.len()).collect();
+        indices.sort_by_key(|i| NonNan::new(self.y[*i]));
+
+        let mut xtmp: Vec<f64> = Vec::new();
+        xtmp.resize(self.len(), 0.0);
+
+        let mut ytmp: Vec<f64> = Vec::new();
+        ytmp.resize(self.len(), 0.0);
+
+        let mut ztmp: Vec<f32> = Vec::new();
+        ztmp.resize(self.len(), 0.0);
+
+        for (i, j) in indices.into_iter().enumerate() {
+            xtmp[j] = self.x[i];
+            ytmp[j] = self.y[i];
+            ztmp[j] = self.z[i];
+        }
+        self.x = xtmp;
+        self.y = ytmp;
+        self.z = ztmp;
     }
 
     pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
         let x = pt.coordinate();
         let z = pt.intensity();
-        self.x.push(x);
-        self.y.push(time);
-        self.z.push(z);
+        self.push_raw(x, time, z);
     }
 
     pub fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        let needs_sort = !self.is_empty() && y < self.y.last().copied().unwrap();
+        unsafe { self.push_raw_unchecked(x, y, z) };
+        if needs_sort {
+            self.sort_by_y();
+        }
+    }
+
+    /// # Safety
+    /// This method does not enforce the sorting over Y dimension. Use it only if
+    /// you do not need to maintain that invariant or intend to sort later.
+    pub unsafe fn push_raw_unchecked(&mut self, x: f64, y: f64, z: f32) {
         self.x.push(x);
         self.y.push(y);
         self.z.push(z);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.x.is_empty()
+    }
+
+    fn find_y(&self, y: f64) -> (Option<usize>, f64) {
+        if self.is_empty() {
+            return (None, y)
+        }
+        match self.y.binary_search_by(|yi| {
+            y.total_cmp(yi)
+        }) {
+            Ok(i) => {
+                let low = i.saturating_sub(1);
+                (low..(low + 3).min(self.len())).map(|i| {
+                    (Some(i), (self.y[i] - y).abs())
+                }).min_by(|(_, e), (_, d)|{
+                    e.total_cmp(d)
+                }).unwrap()
+            },
+            Err(i) => {
+                let low = i.saturating_sub(1);
+                (low..(low + 3).min(self.len())).map(|i| {
+                    (Some(i), (self.y[i] - y).abs())
+                }).min_by(|(_, e), (_, d)|{
+                    e.total_cmp(d)
+                }).unwrap()
+            },
+        }
     }
 
     pub fn iter(&self) -> Iter<'_, X, Y> {
@@ -148,18 +266,7 @@ impl<X, Y> Feature<X, Y> {
     }
 
     fn integrate_y(&self) -> f64 {
-        let mut it = self.y.iter().zip(self.z.iter());
-        if let Some((first_y, first_z)) = it.next() {
-            let (_y, _z, acc) =
-                it.fold((first_y, first_z, 0.0), |(last_y, last_z, acc), (y, z)| {
-                    let step = (last_z + z) / 2.0;
-                    let dy = y - last_y;
-                    (y, z, acc + (step as f64 * dy))
-                });
-            acc
-        } else {
-            0.0
-        }
+        self.trapezoid_integrate(&self.y, &self.z)
     }
 
     pub fn total_intensity(&self) -> f32 {
@@ -222,13 +329,7 @@ impl<X, Y> PartialOrd for Feature<X, Y> {
     }
 }
 
-impl<Y> CoordinateLike<MZ> for Feature<MZ, Y> {
-    fn coordinate(&self) -> f64 {
-        self.coordinate_x()
-    }
-}
-
-impl<Y> CoordinateLike<Mass> for Feature<Mass, Y> {
+impl<X, Y> CoordinateLike<X> for Feature<X, Y> {
     fn coordinate(&self) -> f64 {
         self.coordinate_x()
     }
@@ -256,6 +357,14 @@ impl<X> TimeInterval<Time> for Feature<X, Time> {
     fn start_time(&self) -> Option<f64> {
         self.y.first().copied()
     }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64> {
+        self.y.iter().copied()
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        self.find_y(time)
+    }
 }
 
 impl<X> TimeInterval<IonMobility> for Feature<X, IonMobility> {
@@ -274,6 +383,14 @@ impl<X> TimeInterval<IonMobility> for Feature<X, IonMobility> {
     fn end_time(&self) -> Option<f64> {
         self.y.last().copied()
     }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64> {
+        self.y.iter().copied()
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        self.find_y(time)
+    }
 }
 
 impl<Y> Feature<MZ, Y> {
@@ -282,10 +399,13 @@ impl<Y> Feature<MZ, Y> {
     }
 }
 
-pub type MZLCMSFeature = Feature<MZ, Time>;
-pub type MZIMSFeature = Feature<MZ, IonMobility>;
+pub type LCMSFeature = Feature<MZ, Time>;
+pub type IMSFeature = Feature<MZ, IonMobility>;
 
-impl<X, Y> FeatureLike<X, Y> for Feature<X, Y> where Feature<X, Y> : TimeInterval<Y> {
+impl<X, Y> FeatureLike<X, Y> for Feature<X, Y>
+where
+    Feature<X, Y>: TimeInterval<Y>,
+{
     fn len(&self) -> usize {
         self.len()
     }
@@ -295,7 +415,10 @@ impl<X, Y> FeatureLike<X, Y> for Feature<X, Y> where Feature<X, Y> : TimeInterva
     }
 }
 
-impl<X, Y> FeatureLikeMut<X, Y> for Feature<X, Y> where Feature<X, Y> : TimeInterval<Y> {
+impl<X, Y> FeatureLikeMut<X, Y> for Feature<X, Y>
+where
+    Feature<X, Y>: TimeInterval<Y>,
+{
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
         self.iter_mut()
     }
@@ -310,10 +433,11 @@ impl<X, Y> FeatureLikeMut<X, Y> for Feature<X, Y> where Feature<X, Y> : TimeInte
 }
 
 pub struct Iter<'a, X, Y> {
-    source: &'a Feature<X, Y>,
     xiter: slice::Iter<'a, f64>,
     yiter: slice::Iter<'a, f64>,
     ziter: slice::Iter<'a, f32>,
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>,
 }
 
 impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
@@ -332,7 +456,7 @@ impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
 
 impl<'a, X, Y> ExactSizeIterator for Iter<'a, X, Y> {
     fn len(&self) -> usize {
-        self.source.len()
+        self.xiter.len()
     }
 }
 
@@ -351,10 +475,11 @@ impl<'a, X, Y> DoubleEndedIterator for Iter<'a, X, Y> {
 impl<'a, X, Y> Iter<'a, X, Y> {
     pub fn new(source: &'a Feature<X, Y>) -> Self {
         Self {
-            source,
             xiter: source.x.iter(),
             yiter: source.y.iter(),
             ziter: source.z.iter(),
+            _x: PhantomData,
+            _y: PhantomData,
         }
     }
 }
@@ -529,7 +654,16 @@ pub struct ChargedFeature<X, Y> {
     pub charge: i32,
 }
 
-impl<X, Y> FeatureLikeMut<X, Y> for ChargedFeature<X, Y> where Feature<X, Y> : FeatureLikeMut<X, Y> {
+impl<X, Y> CoordinateLike<X> for ChargedFeature<X, Y> {
+    fn coordinate(&self) -> f64 {
+        self.feature.coordinate_x()
+    }
+}
+
+impl<X, Y> FeatureLikeMut<X, Y> for ChargedFeature<X, Y>
+where
+    Feature<X, Y>: FeatureLikeMut<X, Y>,
+{
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
         <Feature<X, Y> as FeatureLikeMut<X, Y>>::iter_mut(&mut self.feature)
     }
@@ -543,7 +677,10 @@ impl<X, Y> FeatureLikeMut<X, Y> for ChargedFeature<X, Y> where Feature<X, Y> : F
     }
 }
 
-impl<X, Y> TimeInterval<Y> for ChargedFeature<X, Y> where Feature<X, Y> : TimeInterval<Y> {
+impl<X, Y> TimeInterval<Y> for ChargedFeature<X, Y>
+where
+    Feature<X, Y>: TimeInterval<Y>,
+{
     fn apex_time(&self) -> Option<f64> {
         <Feature<X, Y> as TimeInterval<Y>>::apex_time(&self.feature)
     }
@@ -559,9 +696,20 @@ impl<X, Y> TimeInterval<Y> for ChargedFeature<X, Y> where Feature<X, Y> : TimeIn
     fn start_time(&self) -> Option<f64> {
         <Feature<X, Y> as TimeInterval<Y>>::start_time(&self.feature)
     }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64> {
+        self.feature.iter_time()
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        self.feature.find_y(time)
+    }
 }
 
-impl<X, Y> FeatureLike<X, Y> for ChargedFeature<X, Y> where Feature<X, Y> : FeatureLike<X, Y> {
+impl<X, Y> FeatureLike<X, Y> for ChargedFeature<X, Y>
+where
+    Feature<X, Y>: FeatureLike<X, Y>,
+{
     fn len(&self) -> usize {
         <Feature<X, Y> as FeatureLike<X, Y>>::len(&self.feature)
     }
@@ -617,8 +765,19 @@ impl<X, Y> ChargedFeature<X, Y> {
         self.feature.push_raw(x, y, z)
     }
 
+    /// # Safety
+    /// This method does not enforce the sorting over Y dimension. Use it only if
+    /// you do not need to maintain that invariant or intend to sort later.
+    pub unsafe fn push_raw_unchecked(&mut self, x: f64, y: f64, z: f32) {
+        self.feature.push_raw_unchecked(x, y, z)
+    }
+
     pub fn len(&self) -> usize {
         self.feature.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.feature.is_empty()
     }
 }
 
@@ -644,23 +803,11 @@ impl<X, Y> PartialOrd for ChargedFeature<X, Y> {
     }
 }
 
-impl<Y> CoordinateLike<MZ> for ChargedFeature<MZ, Y> {
-    fn coordinate(&self) -> f64 {
-        <Feature<MZ, Y> as CoordinateLike<MZ>>::coordinate(&self.feature)
-    }
-}
-
 impl<Y> CoordinateLike<MZ> for ChargedFeature<Mass, Y> {
     fn coordinate(&self) -> f64 {
         let charge_carrier: f64 = 1.007276;
         let charge = self.charge as f64;
         (self.neutral_mass() + charge_carrier * charge) / charge
-    }
-}
-
-impl<Y> CoordinateLike<Mass> for ChargedFeature<Mass, Y> {
-    fn coordinate(&self) -> f64 {
-        <Feature<Mass, Y> as CoordinateLike<Mass>>::coordinate(&self.feature)
     }
 }
 
@@ -755,8 +902,10 @@ pub struct SimpleFeature<X, Y> {
     y: Vec<f64>,
     z: Vec<f32>,
     _x: PhantomData<X>,
-    _y: PhantomData<Y>
+    _y: PhantomData<Y>,
 }
+
+impl<X, Y> CoArrayOps for SimpleFeature<X, Y> {}
 
 impl<X, Y> SimpleFeature<X, Y> {
     pub fn empty(label: f64) -> Self {
@@ -765,44 +914,79 @@ impl<X, Y> SimpleFeature<X, Y> {
             y: Vec::new(),
             z: Vec::new(),
             _x: PhantomData,
-            _y: PhantomData
+            _y: PhantomData,
         }
     }
 
+    fn sort_by_y(&mut self) {
+        let mut indices: Vec<_> = (0..self.len()).collect();
+        indices.sort_by_key(|i| NonNan::new(self.y[*i]));
+
+        let mut ytmp: Vec<f64> = Vec::new();
+        ytmp.resize(self.len(), 0.0);
+
+        let mut ztmp: Vec<f32> = Vec::new();
+        ztmp.resize(self.len(), 0.0);
+
+        for (i, j) in indices.into_iter().enumerate() {
+            ytmp[j] = self.y[i];
+            ztmp[j] = self.z[i];
+        }
+        self.y = ytmp;
+        self.z = ztmp;
+    }
+
     pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
-        self.y.push(time);
-        self.z.push(pt.intensity());
+        self.push_raw(0.0, time, pt.intensity())
     }
 
     pub fn push_raw(&mut self, _x: f64, y: f64, z: f32) {
+        let needs_sort = self.len() > 0 && self.y.last().copied().unwrap() > y;
         self.y.push(y);
         self.z.push(z);
-    }
-
-    fn idxmax(&self) -> Option<usize> {
-        let pt = self
-            .z
-            .iter()
-            .enumerate()
-            .reduce(|(best_i, best), (current_i, current)| {
-                if *current > *best {
-                    (current_i, current)
-                } else {
-                    (best_i, best)
-                }
-            });
-
-        pt.and_then(|(i, _)| Some(i))
+        if needs_sort {
+            self.sort_by_y();
+        }
     }
 
     fn apex_y(&self) -> Option<f64> {
-        self.idxmax().and_then(|i| self.y.get(i).copied())
+        self.apex_of(&self.y, &self.z)
+    }
+
+    fn find_y(&self, y: f64) -> (Option<usize>, f64) {
+        if self.is_empty() {
+            return (None, y)
+        }
+        match self.y.binary_search_by(|yi| {
+            y.total_cmp(yi)
+        }) {
+            Ok(i) => {
+                let low = i.saturating_sub(1);
+                (low..(low + 3).min(self.len())).map(|i| {
+                    (Some(i), (self.y[i] - y).abs())
+                }).min_by(|(_, e), (_, d)|{
+                    e.total_cmp(d)
+                }).unwrap()
+            },
+            Err(i) => {
+                let low = i.saturating_sub(1);
+                (low..(low + 3).min(self.len())).map(|i| {
+                    (Some(i), (self.y[i] - y).abs())
+                }).min_by(|(_, e), (_, d)|{
+                    e.total_cmp(d)
+                }).unwrap()
+            },
+        }
     }
 }
 
 impl<X, Y> PartialEq for SimpleFeature<X, Y> {
     fn eq(&self, other: &Self) -> bool {
-        self.label == other.label && self.y == other.y && self.z == other.z && self._x == other._x && self._y == other._y
+        self.label == other.label
+            && self.y == other.y
+            && self.z == other.z
+            && self._x == other._x
+            && self._y == other._y
     }
 }
 
@@ -853,6 +1037,14 @@ impl<X, Y> TimeInterval<Y> for SimpleFeature<X, Y> {
             0.0
         }
     }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64> {
+        self.y.iter().copied()
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        self.find_y(time)
+    }
 }
 
 impl<X, Y> IntensityMeasurement for SimpleFeature<X, Y> {
@@ -867,7 +1059,10 @@ impl<X, Y> FeatureLike<X, Y> for SimpleFeature<X, Y> {
     }
 
     fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
-        self.y.iter().zip(self.z.iter()).map(|(y, z)| (&self.label, y, z))
+        self.y
+            .iter()
+            .zip(self.z.iter())
+            .map(|(y, z)| (&self.label, y, z))
     }
 }
 
@@ -904,6 +1099,179 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterat
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct FeatureView<'a, X, Y> {
+    x: &'a [f64],
+    y: &'a [f64],
+    z: &'a [f32],
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>,
+}
+
+impl<'a, X, Y> CoArrayOps for FeatureView<'a, X, Y> {}
+
+impl<'a, X, Y> FeatureView<'a, X, Y> {
+    fn coordinate_x(&self) -> f64 {
+        self.weighted_average(self.x, self.z)
+    }
+
+    fn coordinate_y(&self) -> f64 {
+        self.weighted_average(self.y, self.z)
+    }
+
+    pub fn len(&self) -> usize {
+        self.x.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.x.is_empty()
+    }
+
+    fn apex_y(&self) -> Option<f64> {
+        self.apex_of(self.y, self.z)
+    }
+
+    fn find_y(&self, y: f64) -> (Option<usize>, f64) {
+        if self.is_empty() {
+            return (None, y)
+        }
+        match self.y.binary_search_by(|yi| {
+            y.total_cmp(yi)
+        }) {
+            Ok(i) => {
+                let low = i.saturating_sub(1);
+                (low..(low + 3).min(self.len())).map(|i| {
+                    (Some(i), (self.y[i] - y).abs())
+                }).min_by(|(_, e), (_, d)|{
+                    e.total_cmp(d)
+                }).unwrap()
+            },
+            Err(i) => {
+                let low = i.saturating_sub(1);
+                (low..(low + 3).min(self.len())).map(|i| {
+                    (Some(i), (self.y[i] - y).abs())
+                }).min_by(|(_, e), (_, d)|{
+                    e.total_cmp(d)
+                }).unwrap()
+            },
+        }
+    }
+
+    pub fn iter(&self) -> Iter<'a, X, Y> {
+        Iter {
+            xiter: self.x.iter(),
+            yiter: self.y.iter(),
+            ziter: self.z.iter(),
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+}
+
+impl<'a, X, Y> PartialEq for FeatureView<'a, X, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.x == other.x
+            && self.y == other.y
+            && self.z == other.z
+            && self._x == other._x
+            && self._y == other._y
+    }
+}
+
+impl<'a, X, Y> PartialOrd for FeatureView<'a, X, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self == other {
+            return Some(Ordering::Equal);
+        }
+        match self.coordinate_x().total_cmp(&other.coordinate_x()) {
+            Ordering::Equal => {}
+            x => return Some(x),
+        };
+        Some(self.coordinate_y().total_cmp(&other.coordinate_y()))
+    }
+}
+
+impl<'a, X, Y> CoordinateLike<X> for FeatureView<'a, X, Y> {
+    fn coordinate(&self) -> f64 {
+        self.coordinate_x()
+    }
+}
+
+impl<'a, X> TimeInterval<Time> for FeatureView<'a, X, Time> {
+    fn apex_time(&self) -> Option<f64> {
+        self.apex_y()
+    }
+
+    fn area(&self) -> f64 {
+        self.trapezoid_integrate(self.y, self.z)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        self.y.last().copied()
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        self.y.first().copied()
+    }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64> {
+        self.y.iter().copied()
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        self.find_y(time)
+    }
+}
+
+impl<'a, X> TimeInterval<IonMobility> for FeatureView<'a, X, IonMobility> {
+    fn apex_time(&self) -> Option<f64> {
+        self.apex_y()
+    }
+
+    fn area(&self) -> f64 {
+        self.trapezoid_integrate(self.y, self.z)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        self.y.last().copied()
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        self.y.first().copied()
+    }
+
+    fn iter_time(&self) -> impl Iterator<Item=f64> {
+        self.y.iter().copied()
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        self.find_y(time)
+    }
+}
+
+impl<'a, X, Y> IntensityMeasurement for FeatureView<'a, X, Y> {
+    fn intensity(&self) -> f32 {
+        self.z.iter().sum()
+    }
+}
+
+impl<'a, X, Y> FeatureLike<X, Y> for FeatureView<'a, X, Y>
+where
+    FeatureView<'a, X, Y>: TimeInterval<Y>,
+{
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+        self.iter()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -911,7 +1279,7 @@ mod test {
 
     #[test]
     fn test_build_raw() {
-        let mut x = MZLCMSFeature::empty();
+        let mut x = LCMSFeature::empty();
 
         let points = vec![
             (CentroidPeak::new(204.08, 3432.1, 0), 0.1),
@@ -940,6 +1308,14 @@ mod test {
         }
 
         assert_eq!(x, points.into_iter().collect());
+
+        let (i, e) = x.find_time(0.3);
+        assert_eq!(i, Some(2));
+        assert_eq!(e, 0.0);
+
+        let (i, e) = x.find_time(0.5);
+        assert_eq!(i, Some(2));
+        assert_eq!(e, 0.2);
     }
 
     #[test]

@@ -32,6 +32,7 @@ pub mod peak_index;
 pub mod peak_set;
 pub mod feature;
 pub mod prelude;
+pub mod feature_map;
 #[cfg(test)]
 mod test_data;
 

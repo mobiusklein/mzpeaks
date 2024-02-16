@@ -158,16 +158,12 @@ where
             Err(j) => j,
         };
 
-        if lower_index < n {
-            if self[lower_index].coordinate() < lower_bound {
+        if lower_index < n && self[lower_index].coordinate() < lower_bound {
                 lower_index += 1;
-            }
         }
 
-        if upper_index < n && upper_index > 0 {
-            if self[upper_index].coordinate() > upper_bound {
+        if upper_index < n && upper_index > 0 && self[upper_index].coordinate() > upper_bound {
                 upper_index -= 1;
-            }
         }
 
         if upper_index < n {
@@ -189,7 +185,7 @@ where
 
         let n = self.len();
         if n == 0 {
-            return &self.get_slice(0..0);
+            return self.get_slice(0..0);
         }
 
         let mut lower_index = match self.search_by(lower_bound) {
@@ -224,7 +220,7 @@ where
             lower_index += 1;
         }
         let c = lower_index..upper_index + 1;
-        return &self.get_slice(c);
+        return self.get_slice(c);
     }
 }
 
@@ -317,7 +313,7 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         }
     }
 
-    fn _sort(peaks: &mut Vec<P>) {
+    fn _sort(peaks: &mut [P]) {
         peaks.sort_by(|a, b| a.partial_cmp(b).unwrap());
         for (i, p) in peaks.iter_mut().enumerate() {
             p.set_index(i as IndexType);

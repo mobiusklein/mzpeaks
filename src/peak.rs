@@ -195,7 +195,6 @@ impl From<CentroidPeak> for MZPoint {
         let mut inst = Self {
             mz: peak.coordinate(),
             intensity: peak.intensity(),
-            ..Self::default()
         };
         inst.set_index(peak.index);
         inst

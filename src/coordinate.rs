@@ -149,6 +149,22 @@ impl<C> CoordinateRange<C> {
     pub fn contains_raw(&self, x: &f64) -> bool {
         RangeBounds::<f64>::contains(&self, x)
     }
+
+    pub fn overlaps<T: RangeBounds<f64>>(&self, interval: &T) -> bool {
+        let interval_start = match interval.start_bound() {
+            Bound::Included(x) => *x,
+            Bound::Excluded(x) => *x,
+            Bound::Unbounded => 0.0,
+        };
+
+        let interval_end = match interval.end_bound() {
+            Bound::Included(y) => *y,
+            Bound::Excluded(y) => *y,
+            Bound::Unbounded => f64::INFINITY,
+        };
+        self.end.unwrap_or(f64::INFINITY) >= interval_start
+            && interval_end >= self.start.unwrap_or(0.0)
+    }
 }
 
 impl<C> Default for CoordinateRange<C> {
@@ -196,7 +212,7 @@ impl<C> FromStr for CoordinateRange<C> {
             s.split(' ')
         };
         let start_s = tokens.next().unwrap();
-        let start_t = if start_s == "" {
+        let start_t = if start_s.is_empty() {
             None
         } else {
             match start_s.parse() {
@@ -205,7 +221,7 @@ impl<C> FromStr for CoordinateRange<C> {
             }
         };
         let end_s = tokens.next().unwrap();
-        let end_t = if end_s == "" {
+        let end_t = if end_s.is_empty() {
             None
         } else {
             match end_s.parse() {
@@ -269,17 +285,9 @@ impl<C> From<(f64, f64)> for CoordinateRange<C> {
 
 impl<C> From<CoordinateRange<C>> for Range<f64> {
     fn from(value: CoordinateRange<C>) -> Self {
-        let start = match value.start {
-            Some(x) => x,
-            None => 0.0,
-        };
+        let start = value.start.unwrap_or(0.0);
+        let end = value.end.unwrap_or(f64::INFINITY);
 
-        let end = match value.end {
-            Some(x) => x,
-            None => f64::INFINITY,
-        };
-
-        let r = start..end;
-        r
+        start..end
     }
 }
