@@ -1,6 +1,15 @@
+//! Collections of features that are ordered and searchable by a coordinate,
+//! support fast access and are growable. While the main behaviors are provided
+//! through the [`FeatureMapLike`] generic trait, a (generic) full implementation
+//! is given by [`FeatureMap`].
+//!
+
 use crate::{feature::FeatureLike, CoordinateLike, Tolerance};
 use std::{marker::PhantomData, ops};
 
+
+/// A two dimensional feature collection where features are sorted by the `X` dimension
+/// and each feature is internally sorted by the `Y` dimension.
 pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize>
 where
     <Self as ops::Index<usize>>::Output: CoordinateLike<X>,
@@ -168,6 +177,7 @@ where
     }
 }
 
+/// A mutable kind of [`FeatureMapLike`] which new features can be added to.
 pub trait FeatureMapLikeMut<X, Y, T: FeatureLike<X, Y>> : FeatureMapLike<X, Y, T>
 where
     <Self as ops::Index<usize>>::Output: CoordinateLike<X> {
@@ -180,6 +190,9 @@ where
     fn sort(&mut self);
 }
 
+
+/// Represents a sorted list of mass spectral features that is a concrete implementation
+/// of [`FeatureMapLike`] and [`FeatureMapLikeMut`]
 #[derive(Debug, Default, Clone)]
 pub struct FeatureMap<X, Y, T: FeatureLike<X, Y>> {
     features: Vec<T>,
@@ -188,12 +201,26 @@ pub struct FeatureMap<X, Y, T: FeatureLike<X, Y>> {
 }
 
 impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
+    /// Create a new [`FeatureMap`] from an existing `Vec<T>` and sorts
+    /// the newly created structure to ensure it is ordered by coordinate `X`
     pub fn new(features: Vec<T>) -> Self {
         let mut inst = Self::wrap(features);
         inst.sort();
         inst
     }
 
+    pub fn empty() -> Self {
+        Self {
+            features: Vec::new(),
+            _x: PhantomData,
+            _y: PhantomData
+        }
+    }
+
+    /// Create a new [`FeatureMap`] from an existing `Vec<T>`, but does not actively
+    /// sort the collection. It is up to the caller to ensure that the provided `Vec`
+    /// is sorted or that it will be sorted prior to any of its search functionality
+    /// is used.
     pub fn wrap(features: Vec<T>) -> Self {
         Self {
             features,
@@ -210,10 +237,12 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         self.features.is_empty()
     }
 
+    /// Iterate over references to features
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
         self.features.iter()
     }
 
+    /// Iterate over mutable reference to features
     pub fn iter_mut(&'a mut self) -> std::slice::IterMut<'a, T> {
         self.features.iter_mut()
     }
@@ -223,9 +252,19 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
             .binary_search_by(|feature| feature.coordinate().partial_cmp(&query).unwrap())
     }
 
-    pub fn spanning(&'a self, y: f64) -> FeatureMap<X, Y, &T> where &'a T : FeatureLike<X, Y> {
+    /// Extract a subset of this [`FeatureMap`] that overlap the specified `y` coordinate
+    pub fn spanning(&'a self, y: f64) -> FeatureMap<X, Y, &T> {
         let subset: Vec<_> = self.iter().filter(|f| f.spans(y)).collect();
         FeatureMap::wrap(subset)
+    }
+
+    pub fn from_iter<I: Iterator<Item=T>>(iter: I, sort: bool) -> Self {
+        let features = iter.collect();
+        if sort {
+            Self::new(features)
+        } else {
+            Self::wrap(features)
+        }
     }
 }
 

@@ -1,3 +1,5 @@
+//! A type system implementation of a coordinate system that attempts to deal with the different dimensions
+//! an observation may be placed in simultaneously.
 use std::{
     error::Error,
     fmt::Display,
@@ -7,7 +9,7 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 /// The Mass To Charge Ratio (m/z) coordinate system
 pub struct MZ {}
 
@@ -53,14 +55,6 @@ impl IonMobility {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum CoordinateDimension {
-    MZ(MZ),
-    Mass(Mass),
-    Time(Time),
-    IonMobility(IonMobility),
-}
-
 /// Denote a type has a coordinate value on coordinate system `T`
 pub trait CoordinateLike<T>: PartialOrd {
     /// The trait method for accessing the coordinate of the object on coordinate
@@ -68,6 +62,7 @@ pub trait CoordinateLike<T>: PartialOrd {
     fn coordinate(&self) -> f64;
 }
 
+/// A [`CoordinateLike`] structure whose coordinate is mutable
 pub trait CoordinateLikeMut<T>: CoordinateLike<T> {
     fn coordinate_mut(&mut self) -> &mut f64;
 }
@@ -85,6 +80,20 @@ pub trait MZLocated: CoordinateLike<MZ> {
     #[inline]
     fn mz(&self) -> f64 {
         CoordinateLike::<MZ>::coordinate(self)
+    }
+}
+
+pub trait TimeLocated: CoordinateLike<Time> {
+    #[inline]
+    fn time(&self) -> f64 {
+        CoordinateLike::<Time>::coordinate(self)
+    }
+}
+
+pub trait IonMobilityLocated: CoordinateLike<IonMobility> {
+    #[inline]
+    fn ion_mobility(&self) -> f64 {
+        CoordinateLike::<IonMobility>::coordinate(self)
     }
 }
 
@@ -109,6 +118,10 @@ impl<T: CoordinateLikeMut<C>, C> CoordinateLikeMut<C> for &mut T {
 impl<T: CoordinateLike<Mass>> MassLocated for T {}
 impl<T: CoordinateLike<MZ>> MZLocated for T {}
 
+impl<T: CoordinateLike<Time>> TimeLocated for T {}
+impl<T: CoordinateLike<IonMobility>> IonMobilityLocated for T {}
+
+/// A type alias for the index in an [`IndexedCoordinate`] structure
 pub type IndexType = u32;
 
 /// Indicate that an object may be indexed by coordinate system `T`
@@ -125,6 +138,7 @@ impl<T: IndexedCoordinate<C>, C> IndexedCoordinate<C> for &T {
     fn set_index(&mut self, _index: IndexType) {}
 }
 
+/// An interval within a single dimension
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct CoordinateRange<C> {
     pub start: Option<f64>,

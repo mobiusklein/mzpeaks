@@ -1,3 +1,4 @@
+//! Measure accuracy error tolerance ranges
 use std::{ops::{self, RangeInclusive}, fmt::Display, error::Error, str::FromStr};
 
 #[cfg(feature = "serde")]

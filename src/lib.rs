@@ -26,20 +26,19 @@
 pub mod coordinate;
 #[macro_use]
 pub mod macros;
+pub mod feature;
+pub mod feature_map;
 pub mod mass_error;
 pub mod peak;
 pub mod peak_index;
 pub mod peak_set;
-pub mod feature;
 pub mod prelude;
-pub mod feature_map;
 #[cfg(test)]
 mod test_data;
 
 pub use crate::coordinate::{
-    CoordinateDimension, CoordinateLike, CoordinateLikeMut, CoordinateRange,
-    CoordinateRangeParseError, IndexType, IndexedCoordinate, IonMobility, MZLocated, Mass,
-    MassLocated, Time, MZ,
+    CoordinateLike, CoordinateLikeMut, CoordinateRange, CoordinateRangeParseError, IndexType,
+    IndexedCoordinate, IonMobility, MZLocated, Mass, MassLocated, Time, MZ,
 };
 pub use crate::mass_error::{Tolerance, ToleranceParsingError};
 pub use crate::peak::{

@@ -3,8 +3,8 @@
 //! through the [`PeakCollection`] generic trait, a (generic) full implementation
 //! is given by [`PeakSetVec`].
 //!
-//! The two basic peak types, [`CentroidPeak`](crate::peak::CentroidPeak) and
-//! [`DeconvolutedPeak`](crate::peak::DeconvolutedPeak) have fully specified
+//! The two basic peak types, [`CentroidPeak`] and
+//! [`DeconvolutedPeak`] have fully specified
 //! aliases of [`PeakSetVec`], [`PeakSet`] and [`DeconvolutedPeakSet`],
 //! respectively.
 //!
@@ -12,13 +12,13 @@
 //! [`PeakCollection::search`], [`PeakCollection::has_peak`], [`PeakCollection::all_peaks_for`],
 //! and [`PeakCollection::between`].
 //!
-use std::fmt;
+use std::fmt::{self, Display};
 use std::iter::{Extend, FromIterator};
-use std::marker;
+use std::marker::{self, PhantomData};
 use std::ops::{self, Deref};
 
-#[cfg(feature="serde")]
-use serde::{Serialize, Deserialize};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 use crate::mass_error::Tolerance;
 
@@ -38,18 +38,11 @@ pub enum OrderUpdateEvent {
 }
 
 /// A trait for an ordered container of mass spectral peaks. The trait
-/// interoperates with [`CoordinateLike`].
+/// builds upon [`CoordinateLike`].
 pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize>
 where
     <Self as ops::Index<usize>>::Output: CoordinateLike<C>,
 {
-    /// Add `peak` to the collection, maintaining sort order and peak
-    /// indexing.
-    fn push(&mut self, peak: T) -> OrderUpdateEvent;
-
-    /// Sort the collection, updating the peak indexing.
-    fn sort(&mut self);
-
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -59,6 +52,10 @@ where
     fn get_item(&self, i: usize) -> &T;
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
 
+    fn iter(&self) -> impl Iterator<Item = &T>
+    where
+        T: 'static;
+
     /// Most basic method for coordinate search, find the
     /// index in this collection whose coordinate value is nearest
     /// to `query`. The return signature is identical to
@@ -66,23 +63,22 @@ where
     fn search_by(&self, query: f64) -> Result<usize, usize>;
 
     #[inline]
-    fn _closest_peak(
-        &self,
-        query: f64,
-        error_tolerance: Tolerance,
-        i: usize,
-    ) -> Option<usize> {
+    fn _closest_peak(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
         if i >= self.len() {
-            return None
+            return None;
         }
         let mut j = i;
         let mut best = j;
-        let mut best_err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
+        let mut best_err = error_tolerance
+            .call(self.get_item(j).coordinate(), query)
+            .abs();
         let n = self.len();
         let tol = error_tolerance.tol();
         // search backwards
         while j > 0 && j < n {
-            let err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
+            let err = error_tolerance
+                .call(self.get_item(j).coordinate(), query)
+                .abs();
             if err < best_err && err < tol {
                 best_err = err;
                 best = j;
@@ -94,7 +90,9 @@ where
         j = i;
         // search forwards
         while j < n {
-            let err = error_tolerance.call(self.get_item(j).coordinate(), query).abs();
+            let err = error_tolerance
+                .call(self.get_item(j).coordinate(), query)
+                .abs();
             if err < best_err && err < tol {
                 best_err = err;
                 best = j;
@@ -134,12 +132,7 @@ where
     #[inline]
     /// Return a slice containing all peaks between `low` and `high` coordinates within
     /// `error_tolerance`.
-    fn between(
-        &self,
-        low: f64,
-        high: f64,
-        error_tolerance: Tolerance,
-    ) -> &[T] {
+    fn between(&self, low: f64, high: f64, error_tolerance: Tolerance) -> &[T] {
         let lower_bound = error_tolerance.bounds(low).0;
         let upper_bound = error_tolerance.bounds(high).1;
 
@@ -159,11 +152,11 @@ where
         };
 
         if lower_index < n && self[lower_index].coordinate() < lower_bound {
-                lower_index += 1;
+            lower_index += 1;
         }
 
         if upper_index < n && upper_index > 0 && self[upper_index].coordinate() > upper_bound {
-                upper_index -= 1;
+            upper_index -= 1;
         }
 
         if upper_index < n {
@@ -171,7 +164,7 @@ where
         }
 
         if lower_index >= n {
-            return self.get_slice(0..0)
+            return self.get_slice(0..0);
         }
 
         let subset = self.get_slice(lower_index..upper_index);
@@ -190,9 +183,7 @@ where
 
         let mut lower_index = match self.search_by(lower_bound) {
             Ok(j) => j,
-            Err(j) => {
-                j.min(n - 1)
-            },
+            Err(j) => j.min(n - 1),
         };
 
         let checkpoint = lower_index;
@@ -222,6 +213,20 @@ where
         let c = lower_index..upper_index + 1;
         return self.get_slice(c);
     }
+}
+
+/// A [`PeakCollection`] that can have additional peaks added to it.
+pub trait PeakCollectionMut<T: CoordinateLike<C>, C>:
+    PeakCollection<T, C> + ops::Index<usize>
+where
+    <Self as ops::Index<usize>>::Output: CoordinateLike<C>,
+{
+    /// Add `peak` to the collection, maintaining sort order and peak
+    /// indexing.
+    fn push(&mut self, peak: T) -> OrderUpdateEvent;
+
+    /// Sort the collection, updating the peak indexing.
+    fn sort(&mut self);
 }
 
 // An experiment to implement traits with macros
@@ -275,6 +280,8 @@ pub struct PeakSetVec<P: IndexedCoordinate<C>, C> {
 }
 
 impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
+    /// Create a new [`PeakSetVec`] from an existing `Vec<P>` and sorts
+    /// the newly created structure to ensure it is ordered by coordinate `C`
     pub fn new(mut peaks: Vec<P>) -> Self {
         Self::_sort(&mut peaks);
         Self {
@@ -294,9 +301,7 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         Self::with_capacity(0)
     }
 
-    pub fn from_iter<V: Iterator>(peaks: V, sort: bool) -> Self
-    where
-        V: Iterator<Item = P>,
+    pub fn from_iter<I: Iterator<Item=P>>(peaks: I, sort: bool) -> Self
     {
         let peaks: Vec<P> = peaks.collect();
         if sort {
@@ -306,6 +311,10 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         }
     }
 
+    /// Create a new [`PeakSetVec`] from an existing `Vec<P>`, but does not actively
+    /// sort the collection. It is up to the caller to ensure that the provided `Vec`
+    /// is sorted or that it will be sorted prior to any of its search functionality
+    /// is used.
     pub fn wrap(peaks: Vec<P>) -> Self {
         Self {
             peaks,
@@ -320,10 +329,12 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         }
     }
 
+    /// Iterate over references to peaks
     pub fn iter(&self) -> PeakSetIter<P, C> {
         PeakSetIter::new(self)
     }
 
+    /// Iterate over mutable references to peaks
     pub fn iter_mut(&mut self) -> PeakSetIterMut<P, C> {
         PeakSetIterMut::new(self)
     }
@@ -341,7 +352,7 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     }
 }
 
-impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
+impl<P: IndexedCoordinate<C>, C> PeakCollectionMut<P, C> for PeakSetVec<P, C> {
     fn sort(&mut self) {
         Self::_sort(&mut self.peaks);
     }
@@ -369,7 +380,9 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
             }
         }
     }
+}
 
+impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
     #[inline]
     fn len(&self) -> usize {
         self.peaks.len()
@@ -389,6 +402,10 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
     fn search_by(&self, query: f64) -> Result<usize, usize> {
         self.peaks
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &P> {
+        self.iter()
     }
 }
 
@@ -422,7 +439,7 @@ impl<P: IndexedCoordinate<C>, C> PartialEq for PeakSetVec<P, C> {
         } else {
             for (a, b) in self.iter().zip(other.iter()) {
                 if a != b {
-                    return false
+                    return false;
                 }
             }
             true
@@ -477,7 +494,6 @@ impl<P: IndexedCoordinate<C>, C> Extend<P> for PeakSetVec<P, C> {
         }
     }
 }
-
 
 impl<P: IndexedCoordinate<C>, C> IntoIterator for PeakSetVec<P, C> {
     type Item = P;
@@ -564,11 +580,11 @@ impl<'a, P, C> Iterator for PeakSetIterMut<'a, P, C> {
 
 // ----- Specializations -----
 
-/// A [`PeakSetVec`] of [`CentroidPeak`](crate::peak::CentroidPeak) items
+/// A [`PeakSetVec`] of [`CentroidPeak`] items
 /// ordered by m/z
 pub type PeakSet = PeakSetVec<CentroidPeak, MZ>;
 
-/// A [`PeakSetVec`] of [`DeconvolutedPeak`](crate::peak::DeconvolutedPeak) items
+/// A [`PeakSetVec`] of [`DeconvolutedPeak`] items
 /// ordered by neutral mass
 pub type DeconvolutedPeakSet = PeakSetVec<DeconvolutedPeak, Mass>;
 
@@ -579,6 +595,129 @@ pub type MZPeakSetType<P> = PeakSetVec<P, MZ>;
 /// A partial specialization of [`PeakSetVec`] that requires that the ordering
 /// coordinate is neutral mass
 pub type MassPeakSetType<D> = PeakSetVec<D, Mass>;
+
+/// A borrowed view of a peak list that assumes that it is sorted by its coordinate
+/// dimension ahead of time. Unlike [`PeakSetVec`], this collection does not attempt
+/// to sort or re-index the peaks it contains.
+#[derive(Debug, Clone, Copy)]
+pub struct PeakSetView<'a, P: IndexedCoordinate<C>, C> {
+    peaks: &'a [P],
+    _c: PhantomData<C>,
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> PeakSetView<'a, P, C> {
+    /// # Safety
+    /// This construction does not enforce a sorting on the elements of the peak
+    /// list.
+    pub unsafe fn wrap(peaks: &'a [P]) -> Self {
+        Self {
+            peaks,
+            _c: PhantomData,
+        }
+    }
+
+    fn is_sorted(peaks: &[P]) -> bool {
+        let mut prev = 0.0;
+        for p in peaks {
+            let c = p.coordinate();
+            if prev <= c {
+                prev = c;
+            } else {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn iter(&self) -> PeakSetIter<'a, P, C> {
+        PeakSetIter {
+            iter: self.peaks.iter(),
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> ops::Index<usize> for PeakSetView<'a, P, C> {
+    type Output = P;
+
+    fn index(&self, i: usize) -> &Self::Output {
+        &(self.peaks[i])
+    }
+}
+
+impl_slicing!(PeakSetView<'a, P, C>, 'a, P: IndexedCoordinate<C>, C);
+
+impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P, C> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.peaks.len()
+    }
+
+    #[inline]
+    fn get_item(&self, i: usize) -> &P {
+        &self[i]
+    }
+
+    #[inline]
+    fn get_slice(&self, i: ops::Range<usize>) -> &[P] {
+        &self.peaks[i]
+    }
+
+    #[inline]
+    fn search_by(&self, query: f64) -> Result<usize, usize> {
+        self.peaks
+            .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &P> {
+        self.iter()
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for PeakSetView<'a, P, C> {
+    type Item = &'a P;
+
+    type IntoIter = PeakSetIter<'a, P, C>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &PeakSetView<'a, P, C> {
+    type Item = &'a P;
+
+    type IntoIter = PeakSetIter<'a, P, C>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewConversionError {
+    Unsorted,
+}
+
+impl Display for ViewConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for ViewConversionError {}
+
+impl<'a, P: IndexedCoordinate<C>, C> TryFrom<&'a [P]> for PeakSetView<'a, P, C> {
+    type Error = ViewConversionError;
+
+    fn try_from(value: &'a [P]) -> Result<Self, Self::Error> {
+        if PeakSetView::is_sorted(value) {
+            Ok(unsafe { PeakSetView::wrap(value) })
+        } else {
+            Err(ViewConversionError::Unsorted)
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -635,14 +774,11 @@ mod test {
 
         let block = peaks.between(1313.0, 1316.0, "10.0ppm".parse().unwrap());
         assert_eq!(block.len(), 3);
-
     }
 
     #[test]
     fn test_edgecases() {
-        let peaks = PeakSet::new(vec![
-            CentroidPeak::new(500.0, 2., 0)
-        ]);
+        let peaks = PeakSet::new(vec![CentroidPeak::new(500.0, 2., 0)]);
 
         let p = peaks.has_peak(500.0, Tolerance::Da(1.0));
         assert!(p.is_some());
@@ -663,8 +799,8 @@ mod test {
     #[test]
     fn test_serialize() -> std::io::Result<()> {
         use serde_json;
-        use std::io::prelude::*;
         use std::io;
+        use std::io::prelude::*;
 
         let peaks = test_data::read_peaks_from_file("./test/data/test.txt")?;
         let mut buff = Vec::new();

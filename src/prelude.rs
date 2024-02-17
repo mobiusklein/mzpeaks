@@ -8,4 +8,4 @@ pub use crate::peak::{
     CentroidLike, DeconvolutedCentroidLike, IntensityMeasurement, IntensityMeasurementMut,
     KnownCharge, KnownChargeMut,
 };
-pub use crate::peak_set::PeakCollection;
+pub use crate::peak_set::{PeakCollection, PeakCollectionMut};
