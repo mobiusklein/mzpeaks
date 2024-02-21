@@ -11,7 +11,7 @@ use std::{
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 /// The Mass To Charge Ratio (m/z) coordinate system
-pub struct MZ {}
+pub struct MZ();
 
 impl MZ {
     /// Access the m/z of the coordinate type
@@ -23,7 +23,7 @@ impl MZ {
 
 #[derive(Default, Debug, Clone, Copy)]
 /// The Mass coordinate system
-pub struct Mass {}
+pub struct Mass();
 
 impl Mass {
     /// Access the neutral mass of the coordinate type
@@ -35,7 +35,7 @@ impl Mass {
 
 #[derive(Default, Debug, Clone, Copy)]
 /// The Event Time coordinate system
-pub struct Time {}
+pub struct Time();
 impl Time {
     /// Access the elapsed time of the coordinate type
     #[inline]
@@ -46,7 +46,7 @@ impl Time {
 
 #[derive(Default, Debug, Clone, Copy)]
 /// The Ion Mobility Time coordinate system
-pub struct IonMobility {}
+pub struct IonMobility();
 impl IonMobility {
     /// Access the ion mobility time unit of the coordinate type
     #[inline]
@@ -54,6 +54,23 @@ impl IonMobility {
         CoordinateLike::<IonMobility>::coordinate(inst)
     }
 }
+
+pub trait CoordinateSystem : Sized {
+
+    #[inline]
+    fn coordinate<T: CoordinateLike<Self>>(&self, inst: &T) -> f64 {
+        CoordinateLike::<Self>::coordinate(inst)
+    }
+
+    fn coordinate_mut<'a, T: CoordinateLikeMut<Self>>(&self, inst: &'a mut T) -> &'a mut f64 {
+        CoordinateLikeMut::<Self>::coordinate_mut(inst)
+    }
+}
+
+impl CoordinateSystem for MZ {}
+impl CoordinateSystem for Mass {}
+impl CoordinateSystem for Time {}
+impl CoordinateSystem for IonMobility {}
 
 /// Denote a type has a coordinate value on coordinate system `T`
 pub trait CoordinateLike<T>: PartialOrd {
@@ -304,4 +321,28 @@ impl<C> From<CoordinateRange<C>> for Range<f64> {
 
         start..end
     }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::DeconvolutedPeak;
+
+    fn check_coord<C: CoordinateSystem, P: CoordinateLike<C>>(peak: &P, cs: &C) -> f64 {
+        cs.coordinate(peak)
+    }
+
+    #[test]
+    fn test_coordinate_system() {
+        let mut peak = DeconvolutedPeak::new(204.09, 300.0, 2, 0);
+        let mass = check_coord(&peak, &Mass());
+        let mz = check_coord(&peak, &MZ());
+
+        assert_eq!(peak.neutral_mass(), mass);
+        assert_eq!(peak.mz(), mz);
+
+        *Mass().coordinate_mut(&mut peak) = 9001.0;
+    }
+
 }

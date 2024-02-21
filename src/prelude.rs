@@ -1,7 +1,7 @@
 //! A prelude to bring into scope all the traits of this library.
 
 pub use crate::coordinate::{CoordinateLike, IndexedCoordinate, MZLocated, MassLocated};
-pub use crate::feature::{FeatureLike, FeatureLikeMut, TimeInterval};
+pub use crate::feature::{FeatureLike, FeatureLikeMut, TimeInterval, SplittableFeatureLike};
 pub use crate::feature_map::{FeatureMapLike, FeatureMapLikeMut};
 pub use crate::mass_error::Tolerance;
 pub use crate::peak::{

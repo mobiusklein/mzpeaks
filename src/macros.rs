@@ -38,6 +38,13 @@ macro_rules! implement_mz_coord {
             }
         }
 
+        impl $crate::CoordinateLikeMut<MZ> for $t {
+            #[inline]
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                &mut self.mz
+            }
+        }
+
         impl $crate::IntensityMeasurement for $t {
             #[inline]
             fn intensity(&self) -> f32 {
@@ -89,7 +96,10 @@ macro_rules! implement_mass_coord {
         impl<T: $crate::DeconvolutedCentroidLike> std::cmp::PartialOrd<T> for $t {
             #[inline]
             fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
-                self.neutral_mass.partial_cmp(&other.coordinate())
+                match self.neutral_mass.total_cmp(&other.coordinate()) {
+                    cmp::Ordering::Equal => self.charge.partial_cmp(&other.charge()),
+                    x => Some(x)
+                }
             }
         }
 
@@ -104,6 +114,13 @@ macro_rules! implement_mass_coord {
             #[inline]
             fn charge(&self) -> i32 {
                 self.charge
+            }
+        }
+
+        impl $crate::CoordinateLikeMut<Mass> for $t {
+            #[inline]
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                &mut self.neutral_mass
             }
         }
 

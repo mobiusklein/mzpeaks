@@ -440,7 +440,7 @@ impl<X, Y> IntensityMeasurement for Feature<X, Y> {
     }
 }
 
-impl<X> TimeInterval<Time> for Feature<X, Time> {
+impl<X, Y> TimeInterval<Y> for Feature<X, Y> {
     fn apex_time(&self) -> Option<f64> {
         self.apex_y()
     }
@@ -455,32 +455,6 @@ impl<X> TimeInterval<Time> for Feature<X, Time> {
 
     fn start_time(&self) -> Option<f64> {
         self.y.first().copied()
-    }
-
-    fn iter_time(&self) -> impl Iterator<Item = f64> {
-        self.y.iter().copied()
-    }
-
-    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
-        self.find_y(time)
-    }
-}
-
-impl<X> TimeInterval<IonMobility> for Feature<X, IonMobility> {
-    fn apex_time(&self) -> Option<f64> {
-        self.apex_y()
-    }
-
-    fn area(&self) -> f32 {
-        self.integrate_y()
-    }
-
-    fn start_time(&self) -> Option<f64> {
-        self.y.first().copied()
-    }
-
-    fn end_time(&self) -> Option<f64> {
-        self.y.last().copied()
     }
 
     fn iter_time(&self) -> impl Iterator<Item = f64> {
@@ -1194,6 +1168,7 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterat
     }
 }
 
+/// A non-owning version of [`Feature`]
 #[derive(Debug, Clone, Copy)]
 pub struct FeatureView<'a, X, Y> {
     x: &'a [f64],
@@ -1206,6 +1181,16 @@ pub struct FeatureView<'a, X, Y> {
 impl<'a, X, Y> CoArrayOps for FeatureView<'a, X, Y> {}
 
 impl<'a, X, Y> FeatureView<'a, X, Y> {
+    pub fn new(x: &'a [f64], y: &'a [f64], z: &'a [f32]) -> Self {
+        Self {
+            x,
+            y,
+            z,
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
     fn coordinate_x(&self) -> f64 {
         self.weighted_average(self.x, self.z)
     }
@@ -1224,6 +1209,14 @@ impl<'a, X, Y> FeatureView<'a, X, Y> {
 
     fn apex_y(&self) -> Option<f64> {
         self.apex_of(self.y, self.z)
+    }
+
+    pub fn to_owned(&self) -> Feature<X, Y> {
+        Feature::new(
+            self.x.to_owned(),
+            self.y.to_owned(),
+            self.z.to_owned()
+        )
     }
 
     fn find_y(&self, y: f64) -> (Option<usize>, f64) {
@@ -1288,33 +1281,7 @@ impl<'a, X, Y> CoordinateLike<X> for FeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X> TimeInterval<Time> for FeatureView<'a, X, Time> {
-    fn apex_time(&self) -> Option<f64> {
-        self.apex_y()
-    }
-
-    fn area(&self) -> f32 {
-        self.trapezoid_integrate(self.y, self.z)
-    }
-
-    fn end_time(&self) -> Option<f64> {
-        self.y.last().copied()
-    }
-
-    fn start_time(&self) -> Option<f64> {
-        self.y.first().copied()
-    }
-
-    fn iter_time(&self) -> impl Iterator<Item = f64> {
-        self.y.iter().copied()
-    }
-
-    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
-        self.find_y(time)
-    }
-}
-
-impl<'a, X> TimeInterval<IonMobility> for FeatureView<'a, X, IonMobility> {
+impl<'a, X, Y> TimeInterval<Y> for FeatureView<'a, X, Y> {
     fn apex_time(&self) -> Option<f64> {
         self.apex_y()
     }
@@ -1363,6 +1330,178 @@ where
     }
 }
 
+/// A non-owning version of [`ChargedFeature`]
+#[derive(Debug, Clone, Copy)]
+pub struct ChargedFeatureView<'a, X, Y> {
+    feature: FeatureView<'a, X, Y>,
+    pub charge: i32,
+}
+
+impl<'a, X, Y> TimeInterval<Y> for ChargedFeatureView<'a, X, Y> {
+    fn apex_time(&self) -> Option<f64> {
+        <FeatureView<'a, X, Y> as TimeInterval<Y>>::apex_time(&self.feature)
+    }
+
+    fn area(&self) -> f32 {
+        <FeatureView<'a, X, Y> as TimeInterval<Y>>::area(&self.feature)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        <FeatureView<'a, X, Y> as TimeInterval<Y>>::end_time(&self.feature)
+    }
+
+    fn start_time(&self) -> Option<f64> {
+        <FeatureView<'a, X, Y> as TimeInterval<Y>>::start_time(&self.feature)
+    }
+
+    fn iter_time(&self) -> impl Iterator<Item = f64> {
+        <FeatureView<'a, X, Y> as TimeInterval<Y>>::iter_time(&self.feature)
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        <FeatureView<'a, X, Y> as TimeInterval<Y>>::find_time(&self.feature, time)
+    }
+}
+
+impl<'a, X, Y> PartialEq for ChargedFeatureView<'a, X, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.feature == other.feature && self.charge == other.charge
+    }
+}
+
+impl<'a, X, Y> PartialOrd for ChargedFeatureView<'a, X, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.feature.partial_cmp(&other.feature) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.charge.partial_cmp(&other.charge)
+    }
+}
+
+impl<'a, X, Y> CoordinateLike<X> for ChargedFeatureView<'a, X, Y> {
+    fn coordinate(&self) -> f64 {
+        self.feature.coordinate()
+    }
+}
+
+impl<'a, X, Y> IntensityMeasurement for ChargedFeatureView<'a, X, Y> {
+    fn intensity(&self) -> f32 {
+        self.feature.intensity()
+    }
+}
+
+impl<'a, X, Y> FeatureLike<X, Y> for ChargedFeatureView<'a, X, Y>
+where
+    ChargedFeatureView<'a, X, Y>: TimeInterval<Y>,
+{
+    fn len(&self) -> usize {
+        self.feature.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+        self.iter()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl<'a, X, Y> ChargedFeatureView<'a, X, Y> {
+    pub fn new(feature: FeatureView<'a, X, Y>, charge: i32) -> Self {
+        Self { feature, charge }
+    }
+
+    pub fn len(&self) -> usize {
+        self.feature.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.feature.is_empty()
+    }
+
+    pub fn iter(&self) -> Iter<'a, X, Y> {
+        self.feature.iter()
+    }
+
+    pub fn to_owned(&self) -> ChargedFeature<X, Y> {
+        ChargedFeature::new(
+            self.feature.to_owned(), self.charge
+        )
+    }
+}
+
+
+/// A trait to split features at a given time point
+pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
+    type ViewType: FeatureLike<X, Y>;
+
+    fn split_at(&'a self, point: f64) -> (Self::ViewType, Self::ViewType);
+}
+
+const EMPTY_X: &[f64] = &[];
+const EMPTY_Y: &[f64] = &[];
+const EMPTY_Z: &[f32] = &[];
+
+impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for Feature<X, Y> {
+    type ViewType = FeatureView<'a, X, Y>;
+
+    fn split_at(&'a self, point: f64) -> (Self::ViewType, Self::ViewType) {
+        if let Some(point) = self.find_time(point).0 {
+            let before = Self::ViewType::new(&self.x[..point], &self.y[..point], &self.z[..point]);
+            let after = Self::ViewType::new(&self.x[point..], &self.y[point..], &self.z[point..]);
+            (before, after)
+        } else {
+            let before = Self::ViewType::new(EMPTY_X, EMPTY_Y, EMPTY_Z);
+            let after = Self::ViewType::new(EMPTY_X, EMPTY_Y, EMPTY_Z);
+            (before, after)
+        }
+    }
+}
+
+impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
+    type ViewType = Self;
+
+    fn split_at(&'a self, point: f64) -> (Self::ViewType, Self::ViewType) {
+        if let Some(point) = self.find_time(point).0 {
+            let before = Self::ViewType::new(&self.x[..point], &self.y[..point], &self.z[..point]);
+            let after = Self::ViewType::new(&self.x[point..], &self.y[point..], &self.z[point..]);
+            (before, after)
+        } else {
+            let before = Self::ViewType::new(EMPTY_X, EMPTY_Y, EMPTY_Z);
+            let after = Self::ViewType::new(EMPTY_X, EMPTY_Y, EMPTY_Z);
+            (before, after)
+        }
+    }
+}
+
+impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeature<X, Y> {
+    type ViewType = ChargedFeatureView<'a, X, Y>;
+
+    fn split_at(&'a self, point: f64) -> (Self::ViewType, Self::ViewType) {
+        let (before, after) = self.feature.split_at(point);
+        (
+            Self::ViewType::new(before, self.charge),
+            Self::ViewType::new(after, self.charge),
+        )
+    }
+}
+
+impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeatureView<'a, X, Y> {
+    type ViewType = Self;
+
+    fn split_at(&'a self, point: f64) -> (Self::ViewType, Self::ViewType) {
+        let (before, after) = self.feature.split_at(point);
+        (
+            Self::ViewType::new(before, self.charge),
+            Self::ViewType::new(after, self.charge),
+        )
+    }
+}
+
+
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1407,6 +1546,11 @@ mod test {
         let (i, e) = x.find_time(0.5);
         assert_eq!(i, Some(2));
         assert_eq!(e, 0.2);
+
+        let (b, a) = x.split_at(0.2);
+        assert_eq!(b.len(), 1);
+        assert_eq!(a.len(), 2);
+
     }
 
     #[test]
