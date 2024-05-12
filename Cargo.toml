@@ -13,6 +13,8 @@ license = "Apache-2.0"
 repository = "https://github.com/mobiusklein/mzpeaks"
 documentation = "https://docs.rs/mzpeaks"
 
+include = ["doc/"]
+exclude = ["test/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,3 +30,9 @@ serde = {version="1.0.130", features=["derive"], optional=true}
 [dev-dependencies]
 serde = {version="1.0.130", features=["derive"]}
 serde_json = {version = "1.0.59"}
+
+[package.metadata.docs.rs]
+rustdoc-args = [
+    "--html-in-header",
+    "doc/katex.html",
+]
