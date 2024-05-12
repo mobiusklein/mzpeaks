@@ -234,6 +234,16 @@ impl<X, Y> Feature<X, Y> {
         }
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            x: Vec::with_capacity(capacity),
+            y: Vec::with_capacity(capacity),
+            z: Vec::with_capacity(capacity),
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
     /// Compute a weighted average over the X dimension
     fn coordinate_x(&self) -> f64 {
         self.weighted_average(&self.x, &self.z)
@@ -815,6 +825,13 @@ impl<X, Y> ChargedFeature<X, Y> {
         Self { feature, charge }
     }
 
+    pub fn with_capacity(capacity: usize, charge: i32) -> Self {
+        Self {
+            feature: Feature::with_capacity(capacity),
+            charge
+        }
+    }
+
     pub fn empty(charge: i32) -> Self {
         Self {
             feature: Feature::empty(),
@@ -986,6 +1003,16 @@ impl<X, Y> SimpleFeature<X, Y> {
             label,
             y: Vec::new(),
             z: Vec::new(),
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
+    pub fn with_capacity(capacity: usize, label: f64) -> Self {
+        Self {
+            label,
+            y: Vec::with_capacity(capacity),
+            z: Vec::with_capacity(capacity),
             _x: PhantomData,
             _y: PhantomData,
         }

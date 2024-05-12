@@ -213,6 +213,32 @@ where
         let c = lower_index..upper_index + 1;
         return self.get_slice(c);
     }
+
+    /// Given a **sorted** list of `query` values that are on the same coordinate system `C`, find
+    /// the pairs of indices from `query` to `self` within `error_tolerance` units of error.
+    ///
+    /// This is more efficient than using [`PeakCollection::all_peaks_for`] on each query individually,
+    /// as it consumes $`O(m\log_2{n})`$, where `self` contains `n` items and `queries` contains `m` iems.
+    /// [`PeakCollection::search_sorted_all_indices`] merges two sorted lists, which has $`O(n + m)`$.
+    fn search_sorted_all_indices<Q: CoordinateLike<C>>(&self, queries: &[Q], error_tolerance: Tolerance) -> Vec<(usize, usize)> {
+        let mut checkpoint: usize = 0;
+        let mut pairs: Vec<_> = Vec::new();
+        let n = self.len();
+        for (query_i, query) in queries.iter().enumerate() {
+            let (lb, ub) = error_tolerance.bounds(query.coordinate());
+            for (p, ref_i) in self.get_slice(checkpoint..n).iter().zip(checkpoint..n) {
+                let coord = p.coordinate();
+                if coord < lb {
+                    checkpoint = ref_i;
+                } else if coord > lb && coord < ub {
+                    pairs.push((query_i, ref_i))
+                } else if coord > ub {
+                    break;
+                }
+            }
+        }
+        pairs
+    }
 }
 
 /// A [`PeakCollection`] that can have additional peaks added to it.

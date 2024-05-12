@@ -5,7 +5,7 @@
 //!
 
 use crate::{feature::FeatureLike, CoordinateLike, Tolerance};
-use std::{marker::PhantomData, ops};
+use std::{marker::PhantomData, ops::{self, Range}};
 
 
 /// A two dimensional feature collection where features are sorted by the `X` dimension
@@ -92,15 +92,17 @@ where
     }
 
     #[inline]
-    /// Return a slice containing all features between `low` and `high` coordinates within
+    /// Return the index range containing all features between `low` and `high` coordinates within
     /// `error_tolerance`.
-    fn between(&self, low: f64, high: f64, error_tolerance: Tolerance) -> &[T] {
+    ///
+    /// See [`FeatureMapLike::between`] for that retrieves these features.
+    fn indices_between(&self, low: f64, high: f64, error_tolerance: Tolerance) -> Range<usize> {
         let lower_bound = error_tolerance.bounds(low).0;
         let upper_bound = error_tolerance.bounds(high).1;
 
         let n = self.len();
         if n == 0 {
-            return self.get_slice(0..0);
+            return 0..0;
         }
 
         let mut lower_index = match self.search_by(lower_bound) {
@@ -126,21 +128,31 @@ where
         }
 
         if lower_index >= n {
-            return self.get_slice(0..0);
+            return 0..0;
         }
 
-        let subset = self.get_slice(lower_index..upper_index);
+        lower_index..upper_index
+    }
+
+    #[inline]
+    /// Return a slice containing all features between `low` and `high` coordinates within
+    /// `error_tolerance`.
+    fn between(&self, low: f64, high: f64, error_tolerance: Tolerance) -> &[T] {
+        let indices = self.indices_between(low, high, error_tolerance);
+        let subset = self.get_slice(indices);
         subset
     }
 
     #[inline]
-    /// Find all features which could match `query` within `error_tolerance` units
-    fn all_features_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
+    /// Find all feature indices which could match `query` within `error_tolerance` units.
+    ///
+    /// See [`FeatureMapLike::all_features_for`] for the function that retrieves these features.
+    fn all_indices_for(&self, query: f64, error_tolerance: Tolerance) -> Range<usize> {
         let (lower_bound, upper_bound) = error_tolerance.bounds(query);
 
         let n = self.len();
         if n == 0 {
-            return self.get_slice(0..0);
+            return 0..0
         }
 
         let mut lower_index = match self.search_by(lower_bound) {
@@ -173,6 +185,13 @@ where
             lower_index += 1;
         }
         let c = lower_index..upper_index + 1;
+        return c;
+    }
+
+    #[inline]
+    /// Find all features which could match `query` within `error_tolerance` units
+    fn all_features_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
+        let c = self.all_indices_for(query, error_tolerance);
         return self.get_slice(c);
     }
 }
