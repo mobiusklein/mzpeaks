@@ -4,7 +4,7 @@
 //!
 
 use core::slice;
-use std::{cmp::Ordering, marker::PhantomData};
+use std::{cmp::Ordering, marker::PhantomData, ops::{Bound, RangeBounds}};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -125,6 +125,18 @@ pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + Coordinate
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    fn at(&self, index: usize) -> Option<(f64, f64, f32)> {
+        self.iter().nth(index).map(|(x, y, z)| (*x, *y, *z))
+    }
+
+    fn at_time(&self, time: f64) -> Option<(f64, f64, f32)> {
+        if let (Some(ix), _) = self.find_time(time) {
+            self.at(ix)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, X, Y, T: FeatureLike<X, Y> + TimeInterval<Y>> FeatureLike<X, Y> for &'a T {
@@ -147,6 +159,18 @@ pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
     /// As [`FeatureLikeMut::push`], but instead add raw values instead of deriving them from
     /// a peak-like reference.
     fn push_raw(&mut self, x: f64, y: f64, z: f32);
+
+    fn at_mut(&mut self, index: usize) -> Option<(&mut f64, &mut f64, &mut f32)> {
+        self.iter_mut().nth(index)
+    }
+
+    fn at_time_mut(&mut self, time: f64) -> Option<(&mut f64, &mut f64, &mut f32)> {
+        if let (Some(ix), _) = self.find_time(time) {
+            self.at_mut(ix)
+        } else {
+            None
+        }
+    }
 }
 
 trait CoArrayOps {
@@ -535,6 +559,14 @@ impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
             _ => None,
         }
     }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        let (x, y, z) = (self.xiter.nth(n), self.yiter.nth(n), self.ziter.nth(n));
+        match (x, y, z) {
+            (Some(x), Some(y), Some(z)) => Some((x, y, z)),
+            _ => None,
+        }
+    }
 }
 
 impl<'a, X, Y> ExactSizeIterator for Iter<'a, X, Y> {
@@ -568,19 +600,15 @@ impl<'a, X, Y> Iter<'a, X, Y> {
 }
 
 pub struct MZPeakIter<'a, Y> {
-    source: &'a Feature<MZ, Y>,
-    xiter: slice::Iter<'a, f64>,
-    yiter: slice::Iter<'a, f64>,
-    ziter: slice::Iter<'a, f32>,
+    source: Iter<'a, MZ, Y>,
+
 }
 
 impl<'a, Y> MZPeakIter<'a, Y> {
     pub fn new(source: &'a Feature<MZ, Y>) -> Self {
+        let iter = source.iter();
         Self {
-            source,
-            xiter: source.x.iter(),
-            yiter: source.y.iter(),
-            ziter: source.z.iter(),
+            source: iter
         }
     }
 }
@@ -589,12 +617,18 @@ impl<'a, Y> Iterator for MZPeakIter<'a, Y> {
     type Item = (CentroidPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let x = self.xiter.next();
-        let y = self.yiter.next();
-        let z = self.ziter.next();
-        match (x, y, z) {
-            (Some(x), Some(y), Some(z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
+        let xyz = self.source.next();
+        match xyz {
+            Some((x, y, z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
             _ => None,
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        if let Some((x, y, z)) = self.source.nth(n) {
+            Some((CentroidPeak::new(*x, *z, 0), *y))
+        } else {
+            None
         }
     }
 }
@@ -607,11 +641,9 @@ impl<'a, Y> ExactSizeIterator for MZPeakIter<'a, Y> {
 
 impl<'a, Y> DoubleEndedIterator for MZPeakIter<'a, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let x = self.xiter.next_back();
-        let y = self.yiter.next_back();
-        let z = self.ziter.next_back();
-        match (x, y, z) {
-            (Some(x), Some(y), Some(z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
+        let xyz = self.source.next_back();
+        match xyz {
+            Some((x, y, z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
             _ => None,
         }
     }
@@ -632,6 +664,16 @@ impl<'a, X, Y> Iterator for IterMut<'a, X, Y> {
         let x = self.xiter.next();
         let y = self.yiter.next();
         let z = self.ziter.next();
+        match (x, y, z) {
+            (Some(x), Some(y), Some(z)) => Some((x, y, z)),
+            _ => None,
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        let x = self.xiter.nth(n);
+        let y = self.yiter.nth(n);
+        let z = self.ziter.nth(n);
         match (x, y, z) {
             (Some(x), Some(y), Some(z)) => Some((x, y, z)),
             _ => None,
@@ -684,6 +726,16 @@ impl<X, Y> Iterator for IntoIter<X, Y> {
         let x = self.xiter.next();
         let y = self.yiter.next();
         let z = self.ziter.next();
+        match (x, y, z) {
+            (Some(x), Some(y), Some(z)) => Some((x, y, z)),
+            _ => None,
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        let x = self.xiter.nth(n);
+        let y = self.yiter.nth(n);
+        let z = self.ziter.nth(n);
         match (x, y, z) {
             (Some(x), Some(y), Some(z)) => Some((x, y, z)),
             _ => None,
@@ -957,6 +1009,17 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.next() {
+            Some((
+                DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
+                *time,
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        if let Some((mass, time, intensity)) = self.point_iter.nth(n) {
             Some((
                 DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
                 *time,
@@ -1465,6 +1528,7 @@ pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
     type ViewType: FeatureLike<X, Y>;
 
     fn split_at(&'a self, point: f64) -> (Self::ViewType, Self::ViewType);
+    fn slice(&'a self, bounds: impl RangeBounds<usize>) -> Self::ViewType;
 }
 
 const EMPTY_X: &[f64] = &[];
@@ -1485,6 +1549,22 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for Feature<X, Y> {
             (before, after)
         }
     }
+
+    fn slice(&'a self, bounds: impl RangeBounds<usize>) -> Self::ViewType {
+        let start = bounds.start_bound();
+        let end = bounds.end_bound();
+        match (start, end) {
+            (Bound::Included(i), Bound::Included(j)) => Self::ViewType::new(&self.x[*i..=*j], &self.y[*i..=*j], &self.z[*i..=*j]),
+            (Bound::Included(i), Bound::Excluded(j)) => Self::ViewType::new(&self.x[*i..=*j], &self.y[*i..=*j], &self.z[*i..=*j]),
+            (Bound::Included(i), Bound::Unbounded) => Self::ViewType::new(&self.x[*i..], &self.y[*i..], &self.z[*i..]),
+            (Bound::Excluded(i), Bound::Included(j)) => Self::ViewType::new(&self.x[*i..*j], &self.y[*i..*j], &self.z[*i..*j]),
+            (Bound::Excluded(i), Bound::Excluded(j)) => Self::ViewType::new(&self.x[*i..=*j], &self.y[*i..=*j], &self.z[*i..=*j]),
+            (Bound::Excluded(i), Bound::Unbounded) => Self::ViewType::new(&self.x[*i..], &self.y[*i..], &self.z[*i..]),
+            (Bound::Unbounded, Bound::Included(j)) => Self::ViewType::new(&self.x[..=*j], &self.y[..=*j], &self.z[..=*j]),
+            (Bound::Unbounded, Bound::Excluded(j)) => Self::ViewType::new(&self.x[..*j], &self.y[..*j], &self.z[..*j]),
+            (Bound::Unbounded, Bound::Unbounded) => Self::ViewType::new(&self.x[..], &self.y[..], &self.z[..]),
+        }
+    }
 }
 
 impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
@@ -1501,6 +1581,22 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
             (before, after)
         }
     }
+
+    fn slice(&'a self, bounds: impl RangeBounds<usize>) -> Self::ViewType {
+        let start = bounds.start_bound();
+        let end = bounds.end_bound();
+        match (start, end) {
+            (Bound::Included(i), Bound::Included(j)) => Self::ViewType::new(&self.x[*i..=*j], &self.y[*i..=*j], &self.z[*i..=*j]),
+            (Bound::Included(i), Bound::Excluded(j)) => Self::ViewType::new(&self.x[*i..=*j], &self.y[*i..=*j], &self.z[*i..=*j]),
+            (Bound::Included(i), Bound::Unbounded) => Self::ViewType::new(&self.x[*i..], &self.y[*i..], &self.z[*i..]),
+            (Bound::Excluded(i), Bound::Included(j)) => Self::ViewType::new(&self.x[*i..*j], &self.y[*i..*j], &self.z[*i..*j]),
+            (Bound::Excluded(i), Bound::Excluded(j)) => Self::ViewType::new(&self.x[*i..=*j], &self.y[*i..=*j], &self.z[*i..=*j]),
+            (Bound::Excluded(i), Bound::Unbounded) => Self::ViewType::new(&self.x[*i..], &self.y[*i..], &self.z[*i..]),
+            (Bound::Unbounded, Bound::Included(j)) => Self::ViewType::new(&self.x[..=*j], &self.y[..=*j], &self.z[..=*j]),
+            (Bound::Unbounded, Bound::Excluded(j)) => Self::ViewType::new(&self.x[..*j], &self.y[..*j], &self.z[..*j]),
+            (Bound::Unbounded, Bound::Unbounded) => Self::ViewType::new(&self.x[..], &self.y[..], &self.z[..]),
+        }
+    }
 }
 
 impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeature<X, Y> {
@@ -1513,6 +1609,12 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeature<X, Y> {
             Self::ViewType::new(after, self.charge),
         )
     }
+
+    fn slice(&'a self, bounds: impl RangeBounds<usize>) -> Self::ViewType {
+        let part = self.feature.slice(bounds);
+
+        Self::ViewType::new(part, self.charge)
+    }
 }
 
 impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeatureView<'a, X, Y> {
@@ -1524,6 +1626,11 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeatureView<'a, X, Y> 
             Self::ViewType::new(before, self.charge),
             Self::ViewType::new(after, self.charge),
         )
+    }
+
+    fn slice(&'a self, bounds: impl RangeBounds<usize>) -> Self::ViewType {
+        let part = self.feature.slice(bounds);
+        Self::ViewType::new(part, self.charge)
     }
 }
 

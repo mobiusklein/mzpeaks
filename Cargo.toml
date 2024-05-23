@@ -24,6 +24,7 @@ name = "mzpeaks"
 serde-support = ["serde", ]
 
 [dependencies]
+num-traits = "0.2"
 serde = {version="1.0.130", features=["derive"], optional=true}
 
 [dev-dependencies]
