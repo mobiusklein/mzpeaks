@@ -8,7 +8,7 @@ use num_traits::real::Real;
 
 use super::{Span1D, SimpleInterval};
 
-
+#[allow(unused)]
 pub fn intervals_containg_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borrow<T>>(
     intervals: &[P],
     value: Q,
@@ -22,6 +22,7 @@ pub fn intervals_containg_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borr
     result
 }
 
+#[allow(unused)]
 pub fn intervals_overlapping<
     V,
     T: Span1D<DimType = V>,
@@ -103,6 +104,11 @@ impl<V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
         }
         inst
     }
+}
+
+enum BuildeTreeSide {
+    Left,
+    Right,
 }
 
 /// An interval tree over `T`
@@ -361,11 +367,6 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
     }
 
     pub fn new(intervals: Vec<T>) -> IntervalTree<V, T> {
-        enum Side {
-            Left,
-            Right,
-        }
-
         let root: IntervalTreeNode<V, T> =
             IntervalTreeNode::new(V::zero(), vec![], 0, None, None, None);
         if intervals.is_empty() {
@@ -375,8 +376,8 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         // intervals_.extend(intervals);
         nodes.push(root);
 
-        let mut stack: VecDeque<(usize, Vec<T>, Side)> = VecDeque::new();
-        let entry = (0, intervals, Side::Left);
+        let mut stack: VecDeque<(usize, Vec<T>, BuildeTreeSide)> = VecDeque::new();
+        let entry = (0, intervals, BuildeTreeSide::Left);
         stack.push_back(entry);
         while !stack.is_empty() {
             if let Some((parent, members, side)) = stack.pop_back() {
@@ -416,7 +417,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 let node =
                     IntervalTreeNode::new(center, contained, level, Some(parent), None, None);
                 match side {
-                    Side::Left => {
+                    BuildeTreeSide::Left => {
                         let start = node.start;
                         nodes[parent].left_child = Some(node_index);
                         let mut up = parent;
@@ -430,7 +431,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                             }
                         }
                     }
-                    Side::Right => {
+                    BuildeTreeSide::Right => {
                         let end = node.end;
                         nodes[parent].right_child = Some(node_index);
                         let mut up = parent;
@@ -448,10 +449,10 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 nodes.push(node);
 
                 if !left.is_empty() {
-                    stack.push_back((node_index, left, Side::Left))
+                    stack.push_back((node_index, left, BuildeTreeSide::Left))
                 }
                 if !right.is_empty() {
-                    stack.push_back((node_index, right, Side::Right))
+                    stack.push_back((node_index, right, BuildeTreeSide::Right))
                 }
             }
         }
