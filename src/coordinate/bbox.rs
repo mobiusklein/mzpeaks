@@ -1,3 +1,6 @@
+#![allow(unused)]
+use std::marker::PhantomData;
+
 use super::range::{CoordinateRange, SimpleInterval, Span1D};
 
 /** An inclusive interval over two dimensions
@@ -75,4 +78,41 @@ impl<X, Y> CoordinateBox<X, Y> {
     pub fn new(dim1: CoordinateRange<X>, dim2: CoordinateRange<Y>) -> Self {
         Self { dim1, dim2 }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct QuadTreeNode<V1: PartialOrd + Copy, V2: PartialOrd + Copy, T: Span2D<DimType1 = V1, DimType2 = V2>> {
+    pub start: (V1, V2),
+    pub end: (V1, V2),
+    pub center: (V1, V2),
+    pub level: u32,
+    pub members: Vec<T>,
+    pub parent: Option<usize>,
+    pub children: [Option<usize>; 4],
+    _t: PhantomData<T>
+}
+
+impl<V1: PartialOrd + Copy, V2: PartialOrd + Copy, T: Span2D<DimType1 = V1, DimType2 = V2>> QuadTreeNode<V1, V2, T> {
+    pub fn is_leaf(&self) -> bool {
+        !self.children.iter().any(|s| s.is_some())
+    }
+}
+
+impl<V1: PartialOrd + Copy, V2: PartialOrd + Copy, T: Span2D<DimType1 = V1, DimType2 = V2>> Span2D for QuadTreeNode<V1, V2, T> {
+    type DimType1 = V1;
+
+    type DimType2 = V2;
+
+    fn start(&self) -> (Self::DimType1, Self::DimType2) {
+        self.start
+    }
+
+    fn end(&self) -> (Self::DimType1, Self::DimType2) {
+        self.end
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct QuadTree<V1: PartialOrd + Copy, V2: PartialOrd + Copy, T: Span2D<DimType1 = V1, DimType2 = V2>> {
+    pub nodes: Vec<QuadTreeNode<V1, V2, T>>
 }
