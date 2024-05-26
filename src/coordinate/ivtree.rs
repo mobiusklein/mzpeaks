@@ -519,3 +519,57 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_contains() {
+        let iv = SimpleInterval {
+            start: 2.0,
+            end: 7.0,
+        };
+        assert!(!iv.contains(&0.5));
+        assert!(iv.contains(&5.0));
+    }
+
+    #[test]
+    fn test_intervals_contain() {
+        let ivs = [
+            SimpleInterval::new(0.0, 3.0),
+            SimpleInterval::new(2.0, 5.0),
+            SimpleInterval::new(5.0, 10.0),
+        ];
+        let res = intervals_containg_point(&ivs[..], 2.5f64);
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
+    fn test_interval_tree() {
+        let ivs = vec![
+            SimpleInterval::new(0.0, 3.0),
+            SimpleInterval::new(2.0, 5.0),
+            SimpleInterval::new(5.0, 10.0),
+            SimpleInterval::new(0.5, 3.0),
+            SimpleInterval::new(3.0, 5.0),
+            SimpleInterval::new(5.0, 12.0),
+            SimpleInterval::new(5.0, 6.0),
+            SimpleInterval::new(7.0, 10.0),
+            SimpleInterval::new(7.0, 12.0),
+        ];
+        let tree = IntervalTree::new(ivs.clone());
+        let spanning = tree.contains_point(1.0);
+        assert_eq!(spanning.len(), 2);
+
+        let spanning = tree.contains_point(7.0);
+        assert_eq!(spanning.len(), 4);
+
+        let ivs2: Vec<&SimpleInterval<f64>> = ivs.iter().collect();
+        let tree = IntervalTree::new(ivs2);
+        let spanning = tree.contains_point(1.0);
+        assert_eq!(spanning.len(), 2);
+
+        let spanning = tree.contains_point(7.0);
+        assert_eq!(spanning.len(), 4);
+    }
+}

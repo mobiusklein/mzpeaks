@@ -89,6 +89,18 @@ pub trait Span1D {
     }
 }
 
+impl<T: Span1D> Span1D for &T {
+    type DimType = T::DimType;
+
+    fn start(&self) -> Self::DimType {
+        (*self).start()
+    }
+
+    fn end(&self) -> Self::DimType {
+        (*self).end()
+    }
+}
+
 impl<C> Span1D for CoordinateRange<C> {
     type DimType = Option<f64>;
 

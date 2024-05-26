@@ -27,6 +27,20 @@ pub trait Span2D {
     }
 }
 
+impl<T: Span2D> Span2D for &T {
+    type DimType1 = T::DimType1;
+
+    type DimType2 = T::DimType2;
+
+    fn start(&self) -> (Self::DimType1, Self::DimType2) {
+        (*self).start()
+    }
+
+    fn end(&self) -> (Self::DimType1, Self::DimType2) {
+        (*self).end()
+    }
+}
+
 /// A basic [`Span2D`] implementation
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct BoundingBox<V1: PartialOrd, V2: PartialOrd> {
