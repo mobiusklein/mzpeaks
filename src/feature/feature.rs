@@ -48,6 +48,7 @@ impl<X, Y> Feature<X, Y> {
         }
     }
 
+    /// Create an empty [`Feature`] with pre-allocated capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             x: Vec::with_capacity(capacity),

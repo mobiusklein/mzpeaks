@@ -12,9 +12,13 @@ use crate::{coordinate::CoordinateLike, IntensityMeasurement, KnownCharge};
 use super::traits::{CoArrayOps, FeatureLike, SplittableFeatureLike, TimeInterval};
 use super::util::{NonNan, EMPTY_Y, EMPTY_Z};
 
+
+/// A feature-like type that doesn't have a variable first dimension, instead
+/// using a constant value
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SimpleFeature<X, Y> {
+    /// A constant value for the first dimension
     pub label: f64,
     y: Vec<f64>,
     z: Vec<f32>,
@@ -35,6 +39,7 @@ impl<X, Y> SimpleFeature<X, Y> {
         }
     }
 
+    /// Create an empty [`SimpleFeature`]
     pub fn empty(label: f64) -> Self {
         Self {
             label,
@@ -45,6 +50,7 @@ impl<X, Y> SimpleFeature<X, Y> {
         }
     }
 
+    /// Createa a new empty [`SimpleFeature`] with pre-allocated capacity
     pub fn with_capacity(capacity: usize, label: f64) -> Self {
         Self {
             label,
@@ -73,10 +79,12 @@ impl<X, Y> SimpleFeature<X, Y> {
         self.z = ztmp;
     }
 
+    /// Push a new data point onto the feature and ensure the time ordering invariant is satisfied.
     pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
-        self.push_raw(0.0, time, pt.intensity())
+        self.push_raw(pt.coordinate(), time, pt.intensity())
     }
 
+    /// Push a new data point onto the feature and ensure the time ordering invariant is satisfied.
     pub fn push_raw(&mut self, _x: f64, y: f64, z: f32) {
         let needs_sort = self.len() > 0 && self.y.last().copied().unwrap() > y;
         self.y.push(y);
