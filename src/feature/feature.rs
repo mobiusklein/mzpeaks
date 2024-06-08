@@ -28,6 +28,8 @@ impl<X, Y> CoArrayOps for Feature<X, Y> {}
 
 impl<X, Y> Feature<X, Y> {
     pub fn new(x: Vec<f64>, y: Vec<f64>, z: Vec<f32>) -> Self {
+        assert_eq!(x.len(), y.len());
+        assert_eq!(x.len(), z.len());
         Self {
             x,
             y,
@@ -180,6 +182,10 @@ impl<X, Y> Feature<X, Y> {
 
     pub fn as_view(&self) -> FeatureView<'_, X, Y> {
         FeatureView::new(&self.x, &self.y, &self.z)
+    }
+
+    pub fn into_inner(self) -> (Vec<f64>, Vec<f64>, Vec<f32>) {
+        (self.x, self.y, self.z)
     }
 
     fn integrate_y(&self) -> f32 {

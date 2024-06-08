@@ -43,6 +43,10 @@ impl<X, Y> SimpleFeature<X, Y> {
         SimpleFeatureView::new(self.label, &self.y, &self.z)
     }
 
+    pub fn into_inner(self) -> (f64, Vec<f64>, Vec<f32>) {
+        (self.label, self.y, self.z)
+    }
+
     /// Create an empty [`SimpleFeature`]
     pub fn empty(label: f64) -> Self {
         Self {

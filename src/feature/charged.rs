@@ -133,6 +133,10 @@ impl<X, Y> ChargedFeature<X, Y> {
         ChargedFeatureView::new(self.feature.as_view(), self.charge)
     }
 
+    pub fn into_inner(self) -> (Feature<X, Y>, i32) {
+        (self.feature, self.charge)
+    }
+
     pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
         self.feature.push(pt, time)
     }

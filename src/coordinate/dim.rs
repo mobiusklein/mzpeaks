@@ -44,6 +44,18 @@ impl IonMobility {
     }
 }
 
+#[derive(Default, Debug, Clone, Copy)]
+pub struct Dimensionless();
+
+#[allow(unused)]
+impl Dimensionless {
+    /// Access some unitless position coordinate type
+    #[inline]
+    pub fn coordinate<T: CoordinateLike<Dimensionless>>(inst: &T) -> f64 {
+        CoordinateLike::<Dimensionless>::coordinate(inst)
+    }
+}
+
 pub trait CoordinateSystem: Sized {
     #[inline]
     fn coordinate<T: CoordinateLike<Self>>(&self, inst: &T) -> f64 {
@@ -59,6 +71,7 @@ impl CoordinateSystem for MZ {}
 impl CoordinateSystem for Mass {}
 impl CoordinateSystem for Time {}
 impl CoordinateSystem for IonMobility {}
+impl CoordinateSystem for Dimensionless {}
 
 /// Denote a type has a coordinate value on coordinate system `T`
 pub trait CoordinateLike<T>: PartialOrd {
