@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{coordinate::CoordinateLike, IntensityMeasurement, KnownCharge};
 
-use super::traits::{CoArrayOps, FeatureLike, SplittableFeatureLike, TimeInterval};
+use super::{traits::{CoArrayOps, FeatureLike, SplittableFeatureLike, TimeInterval}, TimeArray};
 use super::util::{NonNan, EMPTY_Y, EMPTY_Z};
 
 
@@ -37,6 +37,10 @@ impl<X, Y> SimpleFeature<X, Y> {
             _x: PhantomData,
             _y: PhantomData,
         }
+    }
+
+    pub fn as_view(&self) -> SimpleFeatureView<'_, X, Y> {
+        SimpleFeatureView::new(self.label, &self.y, &self.z)
     }
 
     /// Create an empty [`SimpleFeature`]
@@ -118,6 +122,12 @@ impl<X, Y> SimpleFeature<X, Y> {
                     .unwrap()
             }
         }
+    }
+}
+
+impl<'a, X, Y> TimeArray<Y> for SimpleFeature<X, Y> {
+    fn time_view(&self) -> &[f64] {
+        &self.y
     }
 }
 
@@ -488,5 +498,11 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
             let after = Self::ViewType::new(self.label, EMPTY_Y, EMPTY_Z);
             (before, after)
         }
+    }
+}
+
+impl<'a, X, Y> TimeArray<Y> for SimpleFeatureView<'a, X, Y> {
+    fn time_view(&self) -> &[f64] {
+        &self.y
     }
 }

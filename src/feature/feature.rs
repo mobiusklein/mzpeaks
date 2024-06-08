@@ -11,7 +11,7 @@ use crate::{CentroidPeak, IonMobility, Time, MZ};
 
 use super::traits::{CoArrayOps, FeatureLike, FeatureLikeMut, SplittableFeatureLike};
 use super::util::{NonNan, EMPTY_X, EMPTY_Y, EMPTY_Z};
-use super::TimeInterval;
+use super::{TimeArray, TimeInterval};
 
 /// A basic implementation of [`FeatureLike`] and [`FeatureLikeMut`]
 #[derive(Debug, Default, Clone)]
@@ -178,6 +178,10 @@ impl<X, Y> Feature<X, Y> {
         IterMut::new(self)
     }
 
+    pub fn as_view(&self) -> FeatureView<'_, X, Y> {
+        FeatureView::new(&self.x, &self.y, &self.z)
+    }
+
     fn integrate_y(&self) -> f32 {
         self.trapezoid_integrate(&self.y, &self.z)
     }
@@ -294,6 +298,12 @@ impl<X, Y> TimeInterval<Y> for Feature<X, Y> {
 impl<Y> Feature<MZ, Y> {
     pub fn iter_peaks(&self) -> MZPeakIter<'_, Y> {
         MZPeakIter::new(self)
+    }
+}
+
+impl<X, Y> TimeArray<Y> for Feature<X, Y> {
+    fn time_view(&self) -> &[f64] {
+        &self.y
     }
 }
 
@@ -857,5 +867,12 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
             let after = Self::ViewType::new(EMPTY_X, EMPTY_Y, EMPTY_Z);
             (before, after)
         }
+    }
+}
+
+
+impl<'a, X, Y> TimeArray<Y> for FeatureView<'a, X, Y> {
+    fn time_view(&self) -> &[f64] {
+        &self.y
     }
 }

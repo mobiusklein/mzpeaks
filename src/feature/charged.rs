@@ -8,7 +8,7 @@ use crate::{
     DeconvolutedPeak, IntensityMeasurement, KnownCharge, MassLocated,
 };
 
-use super::feature::{Feature, FeatureView, Iter, IterMut};
+use super::{feature::{Feature, FeatureView, Iter, IterMut}, TimeArray};
 use super::traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval};
 
 /// A [`Feature`] with an associated `charge`, implementing the [`KnownCharge`] trait.
@@ -129,6 +129,10 @@ impl<X, Y> ChargedFeature<X, Y> {
         self.feature.iter_mut()
     }
 
+    pub fn as_view(&self) -> ChargedFeatureView<'_, X, Y> {
+        ChargedFeatureView::new(self.feature.as_view(), self.charge)
+    }
+
     pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
         self.feature.push(pt, time)
     }
@@ -214,6 +218,12 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterat
         } else {
             Self::empty(0)
         }
+    }
+}
+
+impl<'a, X, Y> TimeArray<Y> for ChargedFeature<X, Y> {
+    fn time_view(&self) -> &[f64] {
+        self.feature.time_view()
     }
 }
 
@@ -433,5 +443,11 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeatureView<'a, X, Y> 
             Self::ViewType::new(before, self.charge),
             Self::ViewType::new(after, self.charge),
         )
+    }
+}
+
+impl<'a, X, Y> TimeArray<Y> for ChargedFeatureView<'a, X, Y> {
+    fn time_view(&self) -> &[f64] {
+        self.feature.time_view()
     }
 }

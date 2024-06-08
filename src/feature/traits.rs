@@ -74,6 +74,19 @@ impl<'a, T, U: TimeInterval<T>> TimeInterval<T> for &'a U {
     }
 }
 
+/// An expansion of [`TimeInterval`] which provides a contiguous slice over the time dimension
+pub trait TimeArray<T> : TimeInterval<T> {
+    /// A slice over the complete time dimension
+    fn time_view(&self) -> &[f64];
+}
+
+
+impl<'a, T, U: TimeArray<T>> TimeArray<T> for &'a U {
+    fn time_view(&self) -> &[f64] {
+        (*self).time_view()
+    }
+}
+
 /// Represents something that is located at a constrained but varying coordinate system `X` over a
 /// sequentially ordered dimension `Y` with an abundance measure at each time point.
 pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + CoordinateLike<X> {

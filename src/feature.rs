@@ -9,7 +9,7 @@ mod simple;
 mod traits;
 mod util;
 
-pub use traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval};
+pub use traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval, TimeArray};
 
 pub use charged::{
     ChargedFeature, ChargedFeatureView, DeconvolutedPeakIter, DeconvolvedIMSFeature,
