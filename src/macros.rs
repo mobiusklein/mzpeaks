@@ -38,7 +38,7 @@ macro_rules! implement_mz_coord {
             }
         }
 
-        impl $crate::CoordinateLikeMut<MZ> for $t {
+        impl $crate::CoordinateLikeMut<$crate::MZ> for $t {
             #[inline]
             fn coordinate_mut(&mut self) -> &mut f64 {
                 &mut self.mz
@@ -95,7 +95,7 @@ macro_rules! implement_mass_coord {
 
         impl<T: $crate::DeconvolutedCentroidLike> std::cmp::PartialOrd<T> for $t {
             #[inline]
-            fn partial_cmp(&self, other: &T) -> Option<cmp::Ordering> {
+            fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
                 match self.neutral_mass.total_cmp(&other.coordinate()) {
                     cmp::Ordering::Equal => self.charge.partial_cmp(&other.charge()),
                     x => Some(x)
@@ -117,7 +117,7 @@ macro_rules! implement_mass_coord {
             }
         }
 
-        impl $crate::CoordinateLikeMut<Mass> for $t {
+        impl $crate::CoordinateLikeMut<$crate::Mass> for $t {
             #[inline]
             fn coordinate_mut(&mut self) -> &mut f64 {
                 &mut self.neutral_mass
@@ -185,7 +185,7 @@ macro_rules! implement_deconvoluted_centroid_conversion {
 
         impl From<$crate::DeconvolutedPeak> for $t {
             fn from(peak: $crate::DeconvolutedPeak) -> Self {
-                let neutral_mass: f64 = CoordinateLike::<$crate::Mass>::coordinate(&peak);
+                let neutral_mass: f64 = $crate::CoordinateLike::<$crate::Mass>::coordinate(&peak);
                 let mut inst = Self {
                     neutral_mass,
                     intensity: peak.intensity(),
@@ -237,11 +237,11 @@ macro_rules! implement_deconvoluted_centroidlike_inner {
 
     ($t:ty, false, true) => {
         $crate::implement_mass_coord!($t);
-        impl $crate::coordinate::IndexedCoordinate<Mass> for $t {
-            fn get_index(&self) -> IndexType {
+        impl $crate::coordinate::IndexedCoordinate<$crate::Mass> for $t {
+            fn get_index(&self) -> $crate::IndexType {
                 0
             }
-            fn set_index(&mut self, _index: IndexType) {}
+            fn set_index(&mut self, _index: $crate::IndexType) {}
         }
 
         $crate::implement_deconvoluted_centroid_conversion!($t);
@@ -299,11 +299,11 @@ macro_rules! implement_centroidlike_inner {
         $crate::implement_mz_coord!($t);
         impl $crate::coordinate::IndexedCoordinate<MZ> for $t {
             #[inline]
-            fn get_index(&self) -> IndexType {
+            fn get_index(&self) -> $crate::IndexType {
                 0
             }
 
-            fn set_index(&mut self, _index: IndexType) {}
+            fn set_index(&mut self, _index: $crate::IndexType) {}
         }
 
         $crate::implement_centroid_conversion!($t);
