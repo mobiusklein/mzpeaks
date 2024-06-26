@@ -705,6 +705,10 @@ impl<'a, X, Y> FeatureView<'a, X, Y> {
         Feature::new(self.x.to_owned(), self.y.to_owned(), self.z.to_owned())
     }
 
+    pub fn into_inner(self) -> (&'a [f64], &'a [f64], &'a [f32]) {
+        (self.x, self.y, self.z)
+    }
+
     fn find_y(&self, y: f64) -> (Option<usize>, f64) {
         if self.is_empty() {
             return (None, y);

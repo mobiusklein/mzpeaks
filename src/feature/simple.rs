@@ -294,6 +294,10 @@ impl<'a, X, Y> SimpleFeatureView<'a, X, Y> {
         SimpleFeature::new(self.label, self.y.to_vec(), self.z.to_vec())
     }
 
+    pub fn into_inner(self) -> (f64, &'a [f64], &'a [f32]) {
+        (self.label, self.y, self.z)
+    }
+
     fn find_y(&self, y: f64) -> (Option<usize>, f64) {
         if self.is_empty() {
             return (None, y);

@@ -137,6 +137,10 @@ impl<X, Y> ChargedFeature<X, Y> {
         (self.feature, self.charge)
     }
 
+    pub fn as_inner(&self) -> (&Feature<X, Y>, i32) {
+        (&self.feature, self.charge)
+    }
+
     pub fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
         self.feature.push(pt, time)
     }
@@ -380,6 +384,14 @@ impl<'a, X, Y> ChargedFeatureView<'a, X, Y> {
 
     pub fn empty(charge: i32) -> Self {
         Self::new(FeatureView::empty(), charge)
+    }
+
+    pub fn into_inner(self) -> (FeatureView<'a, X, Y>, i32) {
+        (self.feature, self.charge)
+    }
+
+    pub fn as_inner(&self) -> (&FeatureView<'a, X, Y>, i32) {
+        (&self.feature, self.charge)
     }
 
     pub fn len(&self) -> usize {
