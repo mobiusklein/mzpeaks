@@ -7,7 +7,7 @@ use std::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{coordinate::CoordinateLike, IntensityMeasurement, KnownCharge};
+use crate::{coordinate::CoordinateLike, IntensityMeasurement};
 
 use super::{traits::{CoArrayOps, FeatureLike, SplittableFeatureLike, TimeInterval}, TimeArray};
 use super::util::{NonNan, EMPTY_Y, EMPTY_Z};
@@ -238,7 +238,7 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement> Extend<(P, f64)> for Sim
     }
 }
 
-impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterator<(P, f64)>
+impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement> FromIterator<(P, f64)>
     for SimpleFeature<X, Y>
 {
     fn from_iter<T: IntoIterator<Item = (P, f64)>>(iter: T) -> Self {
@@ -246,6 +246,22 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterat
         if let Some((peak, time)) = it.next() {
             let mut this = Self::empty(peak.coordinate());
             this.push(&peak, time);
+            this.extend(it);
+            this
+        } else {
+            Self::empty(0.0)
+        }
+    }
+}
+
+impl<X, Y> FromIterator<(f64, f64, f32)>
+    for SimpleFeature<X, Y>
+{
+    fn from_iter<T: IntoIterator<Item = (f64, f64, f32)>>(iter: T) -> Self {
+        let mut it = iter.into_iter();
+        if let Some((x, time, intensity)) = it.next() {
+            let mut this = Self::empty(x);
+            this.push_raw(x, time, intensity);
             this.extend(it);
             this
         } else {
