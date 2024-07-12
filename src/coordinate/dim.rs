@@ -1,3 +1,33 @@
+use std::fmt::Display;
+
+/// An enum over the different coordinate planes
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum Dimension {
+    MZ(MZ),
+    Mass(Mass),
+    Time(Time),
+    IonMobility(IonMobility),
+    Dimensionless(Dimensionless),
+}
+
+impl Dimension {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Dimension::MZ(_) => "m/z",
+            Dimension::Mass(_) => "neutral mass",
+            Dimension::Time(_) => "time",
+            Dimension::IonMobility(_) => "ion mobility",
+            Dimension::Dimensionless(_) => "",
+        }
+    }
+}
+
+impl Display for Dimension {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 /// The Mass To Charge Ratio (m/z) coordinate system
 pub struct MZ();
@@ -10,7 +40,7 @@ impl MZ {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 /// The Mass coordinate system
 pub struct Mass();
 
@@ -22,7 +52,7 @@ impl Mass {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 /// The Event Time coordinate system
 pub struct Time();
 impl Time {
@@ -33,7 +63,7 @@ impl Time {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 /// The Ion Mobility Time coordinate system
 pub struct IonMobility();
 impl IonMobility {
@@ -44,7 +74,7 @@ impl IonMobility {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Dimensionless();
 
 #[allow(unused)]
@@ -56,22 +86,49 @@ impl Dimensionless {
     }
 }
 
+/// Describe a coordinate system as an object itself rather than as a type parameter
 pub trait CoordinateSystem: Sized {
     #[inline]
-    fn coordinate<T: CoordinateLike<Self>>(&self, inst: &T) -> f64 {
+    fn coordinate<T: CoordinateLike<Self>>(inst: &T) -> f64 {
         CoordinateLike::<Self>::coordinate(inst)
     }
 
-    fn coordinate_mut<'a, T: CoordinateLikeMut<Self>>(&self, inst: &'a mut T) -> &'a mut f64 {
+    fn coordinate_mut<'a, T: CoordinateLikeMut<Self>>(inst: &'a mut T) -> &'a mut f64 {
         CoordinateLikeMut::<Self>::coordinate_mut(inst)
+    }
+
+    fn dimension() -> Dimension;
+
+    fn name() -> &'static str {
+        Self::dimension().name()
     }
 }
 
-impl CoordinateSystem for MZ {}
-impl CoordinateSystem for Mass {}
-impl CoordinateSystem for Time {}
-impl CoordinateSystem for IonMobility {}
-impl CoordinateSystem for Dimensionless {}
+impl CoordinateSystem for MZ {
+    fn dimension() -> Dimension {
+        Dimension::MZ(Self())
+    }
+}
+impl CoordinateSystem for Mass {
+    fn dimension() -> Dimension {
+        Dimension::Mass(Self())
+    }
+}
+impl CoordinateSystem for Time {
+    fn dimension() -> Dimension {
+        Dimension::Time(Self())
+    }
+}
+impl CoordinateSystem for IonMobility {
+    fn dimension() -> Dimension {
+        Dimension::IonMobility(Self())
+    }
+}
+impl CoordinateSystem for Dimensionless {
+    fn dimension() -> Dimension {
+        Dimension::Dimensionless(Self())
+    }
+}
 
 /// Denote a type has a coordinate value on coordinate system `T`
 pub trait CoordinateLike<T>: PartialOrd {

@@ -23,19 +23,15 @@ mod test {
     use super::*;
     use crate::DeconvolutedPeak;
 
-    fn check_coord<C: CoordinateSystem, P: CoordinateLike<C>>(peak: &P, cs: &C) -> f64 {
-        cs.coordinate(peak)
-    }
-
     #[test]
     fn test_coordinate_system() {
         let mut peak = DeconvolutedPeak::new(204.09, 300.0, 2, 0);
-        let mass = check_coord(&peak, &Mass());
-        let mz = check_coord(&peak, &MZ());
+        let mass = <Mass as CoordinateSystem>::coordinate(&peak);
+        let mz = MZ::coordinate(&peak);
 
         assert_eq!(peak.neutral_mass(), mass);
         assert_eq!(peak.mz(), mz);
 
-        *Mass().coordinate_mut(&mut peak) = 9001.0;
+        *Mass::coordinate_mut(&mut peak) = 9001.0;
     }
 }
