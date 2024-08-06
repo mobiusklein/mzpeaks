@@ -13,7 +13,7 @@
 //! and [`PeakCollection::between`].
 //!
 use std::fmt::{self, Display};
-use std::iter::{Extend, FromIterator};
+use std::iter::{Extend, FromIterator, FusedIterator};
 use std::marker::{self, PhantomData};
 use std::ops::{self, Deref};
 
@@ -581,6 +581,20 @@ impl<'a, P: IndexedCoordinate<C>, C> Iterator for PeakSetIter<'a, P, C> {
     }
 }
 
+impl<'a, P: IndexedCoordinate<C>, C> ExactSizeIterator for PeakSetIter<'a, P, C> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> FusedIterator for PeakSetIter<'a, P, C> {}
+
+impl<'a, P: IndexedCoordinate<C>, C> DoubleEndedIterator for PeakSetIter<'a, P, C> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back()
+    }
+}
+
 /// Mutable Reference Iterator over [`PeakSetVec`]
 pub struct PeakSetIterMut<'a, P, C> {
     iter: std::slice::IterMut<'a, P>,
@@ -601,6 +615,20 @@ impl<'a, P, C> Iterator for PeakSetIterMut<'a, P, C> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next()
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> ExactSizeIterator for PeakSetIterMut<'a, P, C> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> FusedIterator for PeakSetIterMut<'a, P, C> {}
+
+impl<'a, P: IndexedCoordinate<C>, C> DoubleEndedIterator for PeakSetIterMut<'a, P, C> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back()
     }
 }
 
