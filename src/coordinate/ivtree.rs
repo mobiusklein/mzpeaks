@@ -2,6 +2,7 @@ use std::{
     borrow::Borrow,
     collections::VecDeque,
     iter::Sum,
+    mem
 };
 
 use num_traits::real::Real;
@@ -373,7 +374,6 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
             return IntervalTree { nodes: vec![root] };
         }
         let mut nodes: Vec<IntervalTreeNode<V, T>> = Vec::new();
-        // intervals_.extend(intervals);
         nodes.push(root);
 
         let mut stack: VecDeque<(usize, Vec<T>, BuildeTreeSide)> = VecDeque::new();
@@ -400,18 +400,33 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 } else {
                     let diff = V::from(1e-6).unwrap();
                     for rec in members {
+                        // The interval is essentially a point around the center
                         if (rec.start() - center).abs() < diff && (rec.end() - center).abs() < diff
                         {
                             contained.push(rec)
+                        // The interval is to the left of the center, closing before it.
                         } else if center > rec.end() {
                             left.push(rec)
+                        // The interval is to the right of center, starting after it.
                         } else if center < rec.start() {
                             right.push(rec)
+                        // The interval spans the center, contained in this node
                         } else {
                             contained.push(rec)
                         }
                     }
                 }
+
+                // Sometimes a region is very narrow but does't stack up exactly on the center so only
+                // one side is populated. Force this to become the node-contained data.
+                if contained.is_empty() {
+                    if left.is_empty() && !right.is_empty() {
+                        mem::swap(&mut contained, &mut right);
+                    } else if !left.is_empty() && right.is_empty() {
+                        mem::swap(&mut contained, &mut left);
+                    }
+                }
+
                 let level = nodes[parent].level + 1;
                 let node_index = nodes.len();
                 let node =
