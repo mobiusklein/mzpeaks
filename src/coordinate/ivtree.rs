@@ -425,6 +425,9 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                             let p = &mut nodes[up];
                             p.start = V::min(p.start, start);
                             if let Some(next) = p.parent {
+                                if up == next {
+                                    break;
+                                }
                                 up = next
                             } else {
                                 break;
@@ -439,6 +442,9 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                             let p = &mut nodes[up];
                             p.end = V::max(p.end, end);
                             if let Some(next) = p.parent {
+                                if up == next {
+                                    break;
+                                }
                                 up = next;
                             } else {
                                 break;
@@ -558,6 +564,9 @@ mod test {
             SimpleInterval::new(7.0, 12.0),
         ];
         let tree = IntervalTree::new(ivs.clone());
+        for (i, node) in tree.iter().enumerate() {
+            eprintln!("Node {i}: {node:?}");
+        }
         let spanning = tree.contains_point(1.0);
         assert_eq!(spanning.len(), 2);
 
