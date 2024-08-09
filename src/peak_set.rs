@@ -15,7 +15,7 @@
 use std::fmt::{self, Display};
 use std::iter::{Extend, FromIterator, FusedIterator};
 use std::marker::{self, PhantomData};
-use std::ops::{self, Deref};
+use std::ops;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -548,13 +548,6 @@ impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &'a mut PeakSetVec<P, C> {
     }
 }
 
-impl<P: IndexedCoordinate<C>, C> Deref for PeakSetVec<P, C> {
-    type Target = [P];
-
-    fn deref(&self) -> &Self::Target {
-        &self.peaks
-    }
-}
 
 // ---- Iterators -----
 
