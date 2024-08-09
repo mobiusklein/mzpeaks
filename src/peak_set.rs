@@ -360,6 +360,14 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         PeakSetIter::new(self)
     }
 
+    pub fn first(&self) -> Option<&P> {
+        self.peaks.first()
+    }
+
+    pub fn last(&self) -> Option<&P> {
+        self.peaks.last()
+    }
+
     /// Iterate over mutable references to peaks
     pub fn iter_mut(&mut self) -> PeakSetIterMut<P, C> {
         PeakSetIterMut::new(self)
@@ -661,6 +669,14 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakSetView<'a, P, C> {
             peaks,
             _c: PhantomData,
         }
+    }
+
+    pub fn first(&self) -> Option<&P> {
+        self.peaks.first()
+    }
+
+    pub fn last(&self) -> Option<&P> {
+        self.peaks.last()
     }
 
     fn is_sorted(peaks: &[P]) -> bool {
