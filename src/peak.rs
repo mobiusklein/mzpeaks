@@ -5,10 +5,12 @@
 //!
 
 use std::cmp;
+use std::cmp::Ordering;
 use std::fmt;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
 use crate::{implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner};
+use crate::{MZLocated, MassLocated};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -244,6 +246,144 @@ impl fmt::Display for DeconvolutedPeak {
 impl CoordinateLike<MZ> for DeconvolutedPeak {
     fn coordinate(&self) -> f64 {
         self.mz()
+    }
+}
+
+/// A reference wrapper for [`CentroidLike`] peaks.
+///
+/// The wrapper has its own [`IndexedCoordinate`] implementation
+/// managed separately from the source. This allows them to be re-sorted
+/// and indexed independently.
+#[derive(Debug, Clone, Copy)]
+pub struct CentroidRef<'a, C: CentroidLike> {
+    inner: &'a C,
+    index: IndexType,
+}
+
+impl<'a, C: CentroidLike> PartialEq for CentroidRef<'a, C> {
+    fn eq(&self, other: &Self) -> bool {
+        if (self.mz() - other.coordinate()).abs() > 1e-3
+            || (self.intensity() - other.intensity()).abs() > 1e-3
+        {
+            return false;
+        }
+        true
+    }
+}
+
+impl<'a, C: CentroidLike> PartialOrd for CentroidRef<'a, C> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(
+            self.mz()
+                .total_cmp(&other.mz())
+                .then_with(|| self.intensity().total_cmp(&other.intensity())),
+        )
+    }
+}
+
+impl<'a, C: CentroidLike> CentroidRef<'a, C> {
+    pub fn new(inner: &'a C, index: IndexType) -> Self {
+        Self { inner, index }
+    }
+}
+
+impl<'a, C: CentroidLike> CoordinateLike<MZ> for CentroidRef<'a, C> {
+    fn coordinate(&self) -> f64 {
+        self.inner.mz()
+    }
+}
+
+impl<'a, C: CentroidLike> IntensityMeasurement for CentroidRef<'a, C> {
+    #[inline]
+    fn intensity(&self) -> f32 {
+        self.inner.intensity()
+    }
+}
+
+impl<'a, C: CentroidLike> IndexedCoordinate<MZ> for CentroidRef<'a, C> {
+    #[inline]
+    fn get_index(&self) -> IndexType {
+        self.index
+    }
+    fn set_index(&mut self, index: IndexType) {
+        self.index = index
+    }
+}
+
+/// A reference wrapper for [`DeconvolutedCentroidLike`] peaks.
+///
+/// The wrapper has its own [`IndexedCoordinate`] implementation
+/// managed separately from the source. This allows them to be re-sorted
+/// and indexed independently.
+#[derive(Debug, Clone, Copy)]
+pub struct DeconvolutedCentroidRef<'a, D: DeconvolutedCentroidLike> {
+    inner: &'a D,
+    index: IndexType,
+}
+
+impl<'a, D: DeconvolutedCentroidLike> PartialEq for DeconvolutedCentroidRef<'a, D> {
+    fn eq(&self, other: &Self) -> bool {
+        if (self.neutral_mass() - other.coordinate()).abs() > 1e-3
+            || self.charge() != other.charge()
+            || (self.intensity() - other.intensity()).abs() > 1e-3
+        {
+            return false;
+        }
+        true
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> PartialOrd for DeconvolutedCentroidRef<'a, D> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(
+            self.neutral_mass()
+                .total_cmp(&other.neutral_mass())
+                .then_with(|| self.intensity().total_cmp(&other.intensity())),
+        )
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> DeconvolutedCentroidRef<'a, D> {
+    pub fn new(inner: &'a D, index: IndexType) -> Self {
+        Self { inner, index }
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> CoordinateLike<Mass> for DeconvolutedCentroidRef<'a, D> {
+    fn coordinate(&self) -> f64 {
+        self.inner.neutral_mass()
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> KnownCharge for DeconvolutedCentroidRef<'a, D> {
+    fn charge(&self) -> i32 {
+        self.inner.charge()
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> IntensityMeasurement for DeconvolutedCentroidRef<'a, D> {
+    #[inline]
+    fn intensity(&self) -> f32 {
+        self.inner.intensity()
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> IndexedCoordinate<Mass> for DeconvolutedCentroidRef<'a, D> {
+    #[inline]
+    fn get_index(&self) -> IndexType {
+        self.index
+    }
+    fn set_index(&mut self, index: IndexType) {
+        self.index = index
+    }
+}
+
+impl<'a, D: DeconvolutedCentroidLike> CoordinateLike<MZ> for DeconvolutedCentroidRef<'a, D>
+where
+    D: CoordinateLike<MZ>,
+{
+    fn coordinate(&self) -> f64 {
+        <D as CoordinateLike<MZ>>::coordinate(&self.inner)
     }
 }
 
