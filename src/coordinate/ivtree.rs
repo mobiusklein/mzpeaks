@@ -1,16 +1,18 @@
 use std::{
     borrow::Borrow,
     collections::VecDeque,
-    iter::Sum,
-    mem
+    fmt::Debug,
+    iter::{FusedIterator, Sum},
+    marker::PhantomData,
+    mem,
 };
 
 use num_traits::real::Real;
 
-use super::{Span1D, SimpleInterval};
+use super::{SimpleInterval, Span1D};
 
 #[allow(unused)]
-pub fn intervals_containg_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borrow<T>>(
+fn intervals_containing_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borrow<T>>(
     intervals: &[P],
     value: Q,
 ) -> Vec<&T> {
@@ -24,7 +26,7 @@ pub fn intervals_containg_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borr
 }
 
 #[allow(unused)]
-pub fn intervals_overlapping<
+fn intervals_overlapping<
     V,
     T: Span1D<DimType = V>,
     D: Span1D<DimType = V>,
@@ -242,6 +244,14 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         insert_in
     }
 
+    pub fn contains_iter(
+        &'members self,
+        value: V,
+    ) -> QueryIter<'members, V, T, SimpleInterval<V>, ContainsPredicate<V, T, SimpleInterval<V>>>
+    {
+        QueryIter::new(self, SimpleInterval::new(value, value))
+    }
+
     pub fn contains_point(&'members self, value: V) -> Vec<&'members T> {
         let mut results: Vec<&'members T> = Vec::new();
 
@@ -278,16 +288,26 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         results
     }
 
-    pub fn overlaps(&'members self, start: V, end: V) -> Vec<&'members T> {
+    pub fn overlaps_range(&'members self, start: V, end: V) -> Vec<&'members T> {
+        let q = SimpleInterval::new(start, end);
+        self.overlaps(&q)
+    }
+
+    pub fn overlaps_iter<Q: Span1D<DimType = V>>(
+        &'members self,
+        query: Q,
+    ) -> QueryIter<'members, V, T, Q, OverlapPredicate<V, T, Q>> {
+        QueryIter::new(&self, query)
+    }
+
+    pub fn overlaps<Q: Span1D<DimType = V>>(&'members self, span: Q) -> Vec<&'members T> {
         let mut results: Vec<&'members T> = Vec::new();
 
         if self.nodes.is_empty() {
             return results;
         }
 
-        let q = SimpleInterval::new(start, end);
-
-        if self.nodes[0].overlaps(&q) {
+        if !self.nodes[0].overlaps(&span) {
             return results;
         }
 
@@ -297,19 +317,19 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         while !queue.is_empty() {
             let node = queue.pop_front().unwrap();
             for i in node.members.iter() {
-                if i.overlaps(&q) {
+                if i.overlaps(&span) {
                     results.push(i);
                 }
             }
             if let Some(left_index) = node.left_child {
                 let left = &self.nodes[left_index];
-                if left.overlaps(&q) {
+                if left.overlaps(&span) {
                     queue.push_back(left);
                 }
             }
             if let Some(right_index) = node.right_child {
                 let right = &self.nodes[right_index];
-                if right.overlaps(&q) {
+                if right.overlaps(&span) {
                     queue.push_back(right);
                 }
             }
@@ -517,13 +537,15 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> Iterator for PreorderIter
 
 impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
     pub fn new(tree: &'a IntervalTree<V, T>) -> Self {
-        Self {
-            tree,
-            stack: VecDeque::from(vec![0]),
-        }
+        let stack = if tree.is_empty() {
+            VecDeque::new()
+        } else {
+            VecDeque::from(vec![0])
+        };
+        Self { tree, stack }
     }
 
-    pub fn next_node(&mut self) -> Option<&'a IntervalTreeNode<V, T>> {
+    fn next_node(&mut self) -> Option<&'a IntervalTreeNode<V, T>> {
         match self.stack.pop_back() {
             Some(index) => {
                 let node = &self.tree.nodes[index];
@@ -536,6 +558,201 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
                 Some(node)
             }
             None => None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct QueryIter<
+    'a,
+    V: Real + Copy + Sum,
+    T: Span1D<DimType = V>,
+    Q: Span1D<DimType = V> + 'a,
+    P: NodeSelectorCriterion<V, T, Q>,
+> {
+    ivtree: &'a IntervalTree<V, T>,
+    queue: VecDeque<&'a IntervalTreeNode<V, T>>,
+    current_node: Option<&'a IntervalTreeNode<V, T>>,
+    query: Q,
+    predicate: P,
+    i: usize,
+}
+
+impl<
+        'a,
+        V: Real + Copy + Sum,
+        T: Span1D<DimType = V>,
+        Q: Span1D<DimType = V> + 'a,
+        P: NodeSelectorCriterion<V, T, Q>,
+    > FusedIterator for QueryIter<'a, V, T, Q, P>
+{
+}
+
+impl<
+        'a,
+        V: Real + Copy + Sum,
+        T: Span1D<DimType = V>,
+        Q: Span1D<DimType = V> + 'a,
+        P: NodeSelectorCriterion<V, T, Q>,
+    > Iterator for QueryIter<'a, V, T, Q, P>
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.find_next_value()
+    }
+}
+
+impl<
+        'a,
+        V: Real + Copy + Sum,
+        T: Span1D<DimType = V>,
+        Q: Span1D<DimType = V> + 'a,
+        P: NodeSelectorCriterion<V, T, Q>,
+    > QueryIter<'a, V, T, Q, P>
+{
+    pub fn new(ivtree: &'a IntervalTree<V, T>, query: Q) -> Self {
+        let queue = VecDeque::from(vec![ivtree.root()]);
+        let mut this = Self {
+            ivtree,
+            queue,
+            current_node: None,
+            query,
+            i: 0,
+            predicate: P::new(),
+        };
+        this.find_next_node();
+        this
+    }
+
+    fn find_value_from_node(&mut self, node: &'a IntervalTreeNode<V, T>) -> Option<&'a T> {
+        if self.i < node.members.len() {
+            if let Some((i, v)) = node
+                .members
+                .iter()
+                .enumerate()
+                .skip(self.i)
+                .filter(|(_, v)| self.predicate.item_predicate(&v, &self.query))
+                .next()
+            {
+                self.i = i + 1;
+                Some(v)
+            } else {
+                self.i = node.members.len();
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn find_next_value(&mut self) -> Option<&'a T> {
+        let mut item = None;
+        if let Some(node) = self.current_node {
+            if let Some(value) = self.find_value_from_node(node) {
+                item = Some(value)
+            } else {
+                while self.find_next_node() {
+                    item = self.find_value_from_node(self.current_node.unwrap());
+                    if item.is_some() {
+                        break;
+                    }
+                }
+            }
+        }
+        item
+    }
+
+    fn find_next_node(&mut self) -> bool {
+        if let Some(node) = self.current_node {
+            if let Some(c) = node.left_child {
+                let c = &self.ivtree.nodes[c];
+                if self.predicate.node_predicate(c, &self.query) {
+                    self.queue.push_back(c);
+                }
+            }
+
+            if let Some(c) = node.right_child {
+                let c = &self.ivtree.nodes[c];
+                if self.predicate.node_predicate(c, &self.query) {
+                    self.queue.push_back(c);
+                }
+            }
+        }
+        self.current_node = None;
+        self.i = 0;
+        self.current_node = self.queue.pop_front();
+        self.current_node.is_some()
+    }
+}
+
+pub trait NodeSelectorCriterion<
+    V: Real + Copy + Sum,
+    T: Span1D<DimType = V>,
+    Q: Span1D<DimType = V>,
+>
+{
+    fn new() -> Self;
+
+    fn node_predicate(&self, node: &IntervalTreeNode<V, T>, query: &Q) -> bool;
+
+    fn item_predicate(&self, interval: &T, query: &Q) -> bool;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OverlapPredicate<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
+    _v: PhantomData<V>,
+    _t: PhantomData<T>,
+    _q: PhantomData<Q>,
+}
+
+impl<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
+    NodeSelectorCriterion<V, T, Q> for OverlapPredicate<V, T, Q>
+{
+    #[inline(always)]
+    fn node_predicate(&self, node: &IntervalTreeNode<V, T>, query: &Q) -> bool {
+        node.overlaps(query)
+    }
+
+    #[inline(always)]
+    fn item_predicate(&self, interval: &T, query: &Q) -> bool {
+        interval.overlaps(query)
+    }
+
+    fn new() -> Self {
+        Self {
+            _v: PhantomData,
+            _t: PhantomData,
+            _q: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ContainsPredicate<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
+    _v: PhantomData<V>,
+    _t: PhantomData<T>,
+    _q: PhantomData<Q>,
+}
+
+impl<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
+    NodeSelectorCriterion<V, T, Q> for ContainsPredicate<V, T, Q>
+{
+    #[inline(always)]
+    fn node_predicate(&self, node: &IntervalTreeNode<V, T>, query: &Q) -> bool {
+        node.contains(&query.start())
+    }
+
+    #[inline(always)]
+    fn item_predicate(&self, interval: &T, query: &Q) -> bool {
+        interval.contains(&query.start())
+    }
+
+    fn new() -> Self {
+        Self {
+            _v: PhantomData,
+            _t: PhantomData,
+            _q: PhantomData,
         }
     }
 }
@@ -561,7 +778,7 @@ mod test {
             SimpleInterval::new(2.0, 5.0),
             SimpleInterval::new(5.0, 10.0),
         ];
-        let res = intervals_containg_point(&ivs[..], 2.5f64);
+        let res = intervals_containing_point(&ivs[..], 2.5f64);
         assert_eq!(res.len(), 2);
     }
 
@@ -595,5 +812,10 @@ mod test {
 
         let spanning = tree.contains_point(7.0);
         assert_eq!(spanning.len(), 4);
+
+        let query_iv = SimpleInterval::new(2.0, 5.0);
+        let items = tree.overlaps(&query_iv);
+        let items_iterd: Vec<_> = tree.overlaps_iter(&query_iv).collect();
+        assert_eq!(items, items_iterd);
     }
 }
