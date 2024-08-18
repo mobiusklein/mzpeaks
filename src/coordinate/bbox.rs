@@ -198,12 +198,12 @@ impl<
     }
 
     pub fn is_leaf(&self) -> bool {
-        !self.children.is_some()
+        self.children.is_none()
     }
 
     fn update_bounds(&mut self, children: &[BoundingBox<V1, V2>]) -> bool {
         let bbox = if !self.members.is_empty() {
-            let bbox = self.members.iter().next().unwrap().as_bounding_box();
+            let bbox = self.members.first().unwrap().as_bounding_box();
             let bbox = self
                 .members
                 .iter()
@@ -403,7 +403,7 @@ impl<
             node.members.push(item);
             (
                 node.members.len() > SPLIT_THRESHOLD && node.is_leaf(),
-                node.children.clone(),
+                node.children,
             )
         };
 
@@ -463,8 +463,7 @@ impl<
     pub fn overlaps(&self, item: &impl Span2D<DimType1 = V1, DimType2 = V2>) -> Vec<&T> {
         self.nodes_overlaps(item)
             .into_iter()
-            .map(|(i, node)| node.members.iter())
-            .flatten()
+            .flat_map(|(i, node)| node.members.iter())
             .collect()
     }
 
@@ -486,11 +485,7 @@ impl<
         while let Some((i, node)) = queue.pop_front() {
             if node.contains_interval(item) {
                 queue.extend(node.children.into_iter().flatten().filter_map(|i| {
-                    if let Some(node) = self.nodes.get(i) {
-                        Some((i, node))
-                    } else {
-                        None
-                    }
+                    self.nodes.get(i).map(|node| (i, node))
                 }));
                 nodes.push((i, node));
             }
@@ -573,9 +568,7 @@ impl<
                 .members
                 .iter()
                 .enumerate()
-                .skip(self.i)
-                .filter(|(_, v)| self.predicate.item_predicate(&v, &self.query))
-                .next()
+                .skip(self.i).find(|(_, v)| self.predicate.item_predicate(v, &self.query))
             {
                 self.i = i + 1;
                 Some(v)

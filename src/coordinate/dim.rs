@@ -93,7 +93,7 @@ pub trait CoordinateSystem: Sized {
         CoordinateLike::<Self>::coordinate(inst)
     }
 
-    fn coordinate_mut<'a, T: CoordinateLikeMut<Self>>(inst: &'a mut T) -> &'a mut f64 {
+    fn coordinate_mut<T: CoordinateLikeMut<Self>>(inst: &mut T) -> &mut f64 {
         CoordinateLikeMut::<Self>::coordinate_mut(inst)
     }
 

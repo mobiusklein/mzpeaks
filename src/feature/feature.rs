@@ -862,7 +862,7 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
                 Self::ViewType::new(&self.x[..*j], &self.y[..*j], &self.z[..*j])
             }
             (Bound::Unbounded, Bound::Unbounded) => {
-                Self::ViewType::new(&self.x[..], &self.y[..], &self.z[..])
+                Self::ViewType::new(self.x, self.y, self.z)
             }
         }
     }
@@ -883,6 +883,6 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
 
 impl<'a, X, Y> TimeArray<Y> for FeatureView<'a, X, Y> {
     fn time_view(&self) -> &[f64] {
-        &self.y
+        self.y
     }
 }

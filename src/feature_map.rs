@@ -184,8 +184,8 @@ where
         if v <= lower_bound || v >= upper_bound {
             lower_index += 1;
         }
-        let c = lower_index..upper_index + 1;
-        return c;
+        
+        lower_index..upper_index + 1
     }
 
     #[inline]

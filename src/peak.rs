@@ -383,7 +383,7 @@ where
     D: CoordinateLike<MZ>,
 {
     fn coordinate(&self) -> f64 {
-        <D as CoordinateLike<MZ>>::coordinate(&self.inner)
+        <D as CoordinateLike<MZ>>::coordinate(self.inner)
     }
 }
 

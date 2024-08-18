@@ -297,7 +297,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         &'members self,
         query: Q,
     ) -> QueryIter<'members, V, T, Q, OverlapPredicate<V, T, Q>> {
-        QueryIter::new(&self, query)
+        QueryIter::new(self, query)
     }
 
     pub fn overlaps<Q: Span1D<DimType = V>>(&'members self, span: Q) -> Vec<&'members T> {
@@ -631,9 +631,7 @@ impl<
                 .members
                 .iter()
                 .enumerate()
-                .skip(self.i)
-                .filter(|(_, v)| self.predicate.item_predicate(&v, &self.query))
-                .next()
+                .skip(self.i).find(|(_, v)| self.predicate.item_predicate(v, &self.query))
             {
                 self.i = i + 1;
                 Some(v)

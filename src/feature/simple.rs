@@ -303,7 +303,7 @@ impl<'a, X, Y> SimpleFeatureView<'a, X, Y> {
     }
 
     fn apex_y(&self) -> Option<f64> {
-        self.apex_of(&self.y, &self.z)
+        self.apex_of(self.y, self.z)
     }
 
     pub fn to_owned(&self) -> SimpleFeature<X, Y> {
@@ -353,11 +353,11 @@ impl<'a, X, Y> PartialOrd for SimpleFeatureView<'a, X, Y> {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-        match self.y.partial_cmp(&other.y) {
+        match self.y.partial_cmp(other.y) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-        self.z.partial_cmp(&other.z)
+        self.z.partial_cmp(other.z)
     }
 }
 
@@ -507,7 +507,7 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
                 Self::ViewType::new(self.label, &self.y[..*j], &self.z[..*j])
             }
             (Bound::Unbounded, Bound::Unbounded) => {
-                Self::ViewType::new(self.label, &self.y[..], &self.z[..])
+                Self::ViewType::new(self.label, self.y, self.z)
             }
         }
     }
@@ -527,6 +527,6 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
 
 impl<'a, X, Y> TimeArray<Y> for SimpleFeatureView<'a, X, Y> {
     fn time_view(&self) -> &[f64] {
-        &self.y
+        self.y
     }
 }
