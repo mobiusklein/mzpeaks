@@ -1,5 +1,6 @@
 use core::slice;
 use std::cmp::Ordering;
+use std::iter::FusedIterator;
 use std::marker::PhantomData;
 use std::ops::{Bound, RangeBounds};
 
@@ -396,6 +397,8 @@ impl<'a, X, Y> DoubleEndedIterator for Iter<'a, X, Y> {
     }
 }
 
+impl<'a, X, Y> FusedIterator for Iter<'a, X, Y> {}
+
 impl<'a, X, Y> Iter<'a, X, Y> {
     pub fn new(source: &'a Feature<X, Y>) -> Self {
         Self {
@@ -456,6 +459,8 @@ impl<'a, Y> DoubleEndedIterator for MZPeakIter<'a, Y> {
         }
     }
 }
+
+impl<'a, Y> FusedIterator for MZPeakIter<'a, Y> {}
 
 /// An iterator producing mutable references to feature data
 /// as owned by [`Feature`].
@@ -520,6 +525,8 @@ impl<'a, X, Y> DoubleEndedIterator for IterMut<'a, X, Y> {
         }
     }
 }
+
+impl<'a, X, Y> FusedIterator for IterMut<'a, X, Y> {}
 
 /// A consuming iterator for [`Feature`]
 pub struct IntoIter<X, Y> {
