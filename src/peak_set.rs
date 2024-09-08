@@ -13,9 +13,9 @@
 //! and [`PeakCollection::between`].
 //!
 use std::fmt::{self, Display};
-use std::iter::{Extend, FromIterator, FusedIterator};
+use std::iter::{Extend, FromIterator};
 use std::marker::{self, PhantomData};
-use std::ops;
+use std::ops::{self, Range};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -39,10 +39,7 @@ pub enum OrderUpdateEvent {
 
 /// A trait for an ordered container of mass spectral peaks. The trait
 /// builds upon [`CoordinateLike`].
-pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize>
-where
-    <Self as ops::Index<usize>>::Output: CoordinateLike<C>,
-{
+pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T> {
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -220,7 +217,11 @@ where
     /// This is more efficient than using [`PeakCollection::all_peaks_for`] on each query individually,
     /// as it consumes $`O(m\log_2{n})`$, where `self` contains `n` items and `queries` contains `m` iems.
     /// [`PeakCollection::search_sorted_all_indices`] merges two sorted lists, which has $`O(n + m)`$.
-    fn search_sorted_all_indices<Q: CoordinateLike<C>>(&self, queries: &[Q], error_tolerance: Tolerance) -> Vec<(usize, usize)> {
+    fn search_sorted_all_indices<Q: CoordinateLike<C>>(
+        &self,
+        queries: &[Q],
+        error_tolerance: Tolerance,
+    ) -> Vec<(usize, usize)> {
         let mut checkpoint: usize = 0;
         let mut pairs: Vec<_> = Vec::new();
         let n = self.len();
@@ -239,14 +240,136 @@ where
         }
         pairs
     }
+
+    /// This alternative implementation of [`PeakCollection::search_sorted_all_indices`] that uses
+    /// an iterator instead of creating intermediate storage. It should be equivalent in behavior
+    /// but touch the heap less.
+    fn search_sorted_all_indices_iter<'a, Q: CoordinateLike<C>>(
+        &'a self,
+        queries: &'a [Q],
+        error_tolerance: Tolerance,
+    ) -> SearchSortedIter<'a, C, T, Self, Q>
+    where
+        Self: Sized,
+    {
+        SearchSortedIter::new(self, queries, error_tolerance)
+    }
+}
+
+#[derive(Debug)]
+pub struct SearchSortedIter<
+    'a,
+    C,
+    T: CoordinateLike<C>,
+    P: PeakCollection<T, C>,
+    Q: CoordinateLike<C>,
+> {
+    peaks: &'a P,
+    queries: &'a [Q],
+    error_tolerance: Tolerance,
+    checkpoint: usize,
+    query_i: usize,
+    query_n: usize,
+    query_lower_bound: f64,
+    query_upper_bound: f64,
+    self_n: usize,
+    query_hit_range: <Range<usize> as IntoIterator>::IntoIter,
+    _c: PhantomData<C>,
+    _t: PhantomData<T>,
+}
+
+impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>> Iterator
+    for SearchSortedIter<'a, C, T, P, Q>
+{
+    type Item = (usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.produce()
+    }
+}
+
+impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
+    SearchSortedIter<'a, C, T, P, Q>
+{
+    pub fn new(peaks: &'a P, queries: &'a [Q], error_tolerance: Tolerance) -> Self {
+        let self_n = peaks.len();
+        let query_n = queries.len();
+
+        let mut this = Self {
+            peaks,
+            queries,
+            error_tolerance,
+            checkpoint: 0,
+            self_n,
+            query_i: 0,
+            query_n,
+            query_lower_bound: 0.0,
+            query_upper_bound: 0.0,
+            query_hit_range: (0..0).into_iter(),
+            _c: PhantomData,
+            _t: PhantomData,
+        };
+        if query_n > 0 {
+            this.update_bounds();
+            this.query_hit_range = this.seek_next_matches().into_iter();
+        }
+        this
+    }
+
+    fn update_bounds(&mut self) {
+        (self.query_lower_bound, self.query_upper_bound) = self
+            .error_tolerance
+            .bounds(self.queries[self.query_i].coordinate());
+    }
+
+    fn finalize_query(&mut self) -> bool {
+        if self.query_i < self.query_n.saturating_sub(1) {
+            self.query_i += 1;
+            self.update_bounds();
+            self.query_hit_range = self.seek_next_matches().into_iter();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn seek_next_matches(&mut self) -> Range<usize> {
+        let i = self.checkpoint;
+        let n = self.self_n;
+        let mut ref_start = None;
+        let mut ref_end = 0;
+        for (p, ref_i) in self.peaks.get_slice(i..n).iter().zip(i..n) {
+            let coord = p.coordinate();
+            if coord < self.query_lower_bound {
+                self.checkpoint = ref_i;
+            } else if coord >= self.query_lower_bound
+                && coord < self.query_upper_bound
+                && ref_start.is_none()
+            {
+                ref_start = Some(ref_i);
+            } else if coord > self.query_upper_bound {
+                ref_end = ref_i;
+                break;
+            }
+        }
+        ref_start.unwrap_or(ref_end)..ref_end
+    }
+
+    fn produce(&mut self) -> Option<(usize, usize)> {
+        let pair = self.query_hit_range.next().map(|i| (self.query_i, i));
+        if pair.is_none() {
+            if !self.finalize_query() {
+                return None;
+            }
+            self.query_hit_range.next().map(|i| (self.query_i, i))
+        } else {
+            pair
+        }
+    }
 }
 
 /// A [`PeakCollection`] that can have additional peaks added to it.
-pub trait PeakCollectionMut<T: CoordinateLike<C>, C>:
-    PeakCollection<T, C> + ops::Index<usize>
-where
-    <Self as ops::Index<usize>>::Output: CoordinateLike<C>,
-{
+pub trait PeakCollectionMut<T: CoordinateLike<C>, C>: PeakCollection<T, C> {
     /// Add `peak` to the collection, maintaining sort order and peak
     /// indexing.
     fn push(&mut self, peak: T) -> OrderUpdateEvent;
@@ -327,8 +450,7 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         Self::with_capacity(0)
     }
 
-    pub fn from_iter<I: Iterator<Item=P>>(peaks: I, sort: bool) -> Self
-    {
+    pub fn from_iter<I: Iterator<Item = P>>(peaks: I, sort: bool) -> Self {
         let peaks: Vec<P> = peaks.collect();
         if sort {
             Self::new(peaks)
@@ -356,8 +478,8 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     }
 
     /// Iterate over references to peaks
-    pub fn iter(&self) -> PeakSetIter<P, C> {
-        PeakSetIter::new(self)
+    pub fn iter(&self) -> PeakSetIter<P> {
+        self.peaks.iter()
     }
 
     pub fn first(&self) -> Option<&P> {
@@ -369,8 +491,8 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     }
 
     /// Iterate over mutable references to peaks
-    pub fn iter_mut(&mut self) -> PeakSetIterMut<P, C> {
-        PeakSetIterMut::new(self)
+    pub fn iter_mut(&mut self) -> PeakSetIterMut<P> {
+        self.peaks.iter_mut()
     }
 
     fn _push(&mut self, peak: P) {
@@ -540,98 +662,26 @@ impl<P: IndexedCoordinate<C>, C> IntoIterator for PeakSetVec<P, C> {
 
 impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &'a PeakSetVec<P, C> {
     type Item = &'a P;
-    type IntoIter = PeakSetIter<'a, P, C>;
+    type IntoIter = PeakSetIter<'a, P>;
 
     fn into_iter(self) -> Self::IntoIter {
-        PeakSetIter::new(self)
+        self.iter()
     }
 }
 
 impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &'a mut PeakSetVec<P, C> {
     type Item = &'a mut P;
-    type IntoIter = PeakSetIterMut<'a, P, C>;
+    type IntoIter = PeakSetIterMut<'a, P>;
 
     fn into_iter(self) -> Self::IntoIter {
-        PeakSetIterMut::new(self)
+        self.iter_mut()
     }
 }
-
 
 // ---- Iterators -----
 
-/// Reference Iterator over [`PeakSetVec`]
-pub struct PeakSetIter<'a, P, C> {
-    iter: std::slice::Iter<'a, P>,
-    phantom: marker::PhantomData<C>,
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> PeakSetIter<'a, P, C> {
-    fn new(peaks: &'a PeakSetVec<P, C>) -> PeakSetIter<'a, P, C> {
-        PeakSetIter {
-            iter: peaks.peaks.iter(),
-            phantom: marker::PhantomData,
-        }
-    }
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> Iterator for PeakSetIter<'a, P, C> {
-    type Item = &'a P;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> ExactSizeIterator for PeakSetIter<'a, P, C> {
-    fn len(&self) -> usize {
-        self.iter.len()
-    }
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> FusedIterator for PeakSetIter<'a, P, C> {}
-
-impl<'a, P: IndexedCoordinate<C>, C> DoubleEndedIterator for PeakSetIter<'a, P, C> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.iter.next_back()
-    }
-}
-
-/// Mutable Reference Iterator over [`PeakSetVec`]
-pub struct PeakSetIterMut<'a, P, C> {
-    iter: std::slice::IterMut<'a, P>,
-    phantom: marker::PhantomData<C>,
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> PeakSetIterMut<'a, P, C> {
-    fn new(peaks: &'a mut PeakSetVec<P, C>) -> PeakSetIterMut<'a, P, C> {
-        PeakSetIterMut {
-            iter: peaks.peaks.iter_mut(),
-            phantom: marker::PhantomData,
-        }
-    }
-}
-
-impl<'a, P, C> Iterator for PeakSetIterMut<'a, P, C> {
-    type Item = &'a mut P;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next()
-    }
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> ExactSizeIterator for PeakSetIterMut<'a, P, C> {
-    fn len(&self) -> usize {
-        self.iter.len()
-    }
-}
-
-impl<'a, P: IndexedCoordinate<C>, C> FusedIterator for PeakSetIterMut<'a, P, C> {}
-
-impl<'a, P: IndexedCoordinate<C>, C> DoubleEndedIterator for PeakSetIterMut<'a, P, C> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.iter.next_back()
-    }
-}
+pub type PeakSetIter<'a, P> = std::slice::Iter<'a, P>;
+pub type PeakSetIterMut<'a, P> = std::slice::IterMut<'a, P>;
 
 // ----- Specializations -----
 
@@ -692,11 +742,8 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakSetView<'a, P, C> {
         true
     }
 
-    pub fn iter(&self) -> PeakSetIter<'a, P, C> {
-        PeakSetIter {
-            iter: self.peaks.iter(),
-            phantom: PhantomData,
-        }
+    pub fn iter(&self) -> PeakSetIter<'a, P> {
+        self.peaks.iter()
     }
 }
 
@@ -740,7 +787,7 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P,
 impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for PeakSetView<'a, P, C> {
     type Item = &'a P;
 
-    type IntoIter = PeakSetIter<'a, P, C>;
+    type IntoIter = PeakSetIter<'a, P>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -750,7 +797,7 @@ impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for PeakSetView<'a, P, C> {
 impl<'a, P: IndexedCoordinate<C>, C> IntoIterator for &PeakSetView<'a, P, C> {
     type Item = &'a P;
 
-    type IntoIter = PeakSetIter<'a, P, C>;
+    type IntoIter = PeakSetIter<'a, P>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -785,7 +832,7 @@ impl<'a, P: IndexedCoordinate<C>, C> TryFrom<&'a [P]> for PeakSetView<'a, P, C> 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_data;
+    use crate::{peak::MZPoint, test_data};
 
     #[test]
     fn test_sequence_behavior() {
@@ -856,6 +903,24 @@ mod test {
 
         let p = peaks.all_peaks_for(500.0, Tolerance::Da(1.0));
         assert!(p.len() == 0);
+    }
+
+    #[test]
+    fn test_all_peaks_for() -> std::io::Result<()> {
+        let peaks = test_data::read_peaks_from_file("./test/data/test.txt")?;
+
+        let queries = vec![
+            MZPoint::new(262.2675, 1000.0),
+            MZPoint::new(566.3623, 1210.0),
+            MZPoint::new(645.1916, 20.0),
+        ];
+
+        let indices = peaks.search_sorted_all_indices(&queries, Tolerance::PPM(20.0));
+        let it = SearchSortedIter::new(&peaks, &queries, Tolerance::PPM(20.0));
+        let iter_indices: Vec<_> = it.collect();
+
+        assert_eq!(indices, iter_indices);
+        Ok(())
     }
 
     #[cfg(feature = "serde")]
