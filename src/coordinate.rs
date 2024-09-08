@@ -7,11 +7,13 @@ mod ivtree;
 
 pub use dim::{
     CoordinateLike, CoordinateLikeMut, CoordinateSystem,
+    Dimension,
     IndexType, IndexedCoordinate,
     IonMobility, IonMobilityLocated,
     MZ, MZLocated,
     Mass, MassLocated,
     Time, TimeLocated,
+    Dimensionless,
 };
 
 pub use range::{CoordinateRange, CoordinateRangeParseError, SimpleInterval, Span1D};

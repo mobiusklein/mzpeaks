@@ -212,3 +212,13 @@ impl<T: IndexedCoordinate<C>, C> IndexedCoordinate<C> for &T {
 
     fn set_index(&mut self, _index: IndexType) {}
 }
+
+impl<T: IndexedCoordinate<C>, C> IndexedCoordinate<C> for &mut T {
+    fn get_index(&self) -> IndexType {
+        (**self).get_index()
+    }
+
+    fn set_index(&mut self, index: IndexType) {
+        (**self).set_index(index)
+    }
+}
