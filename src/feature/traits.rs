@@ -158,8 +158,9 @@ pub(crate) trait CoArrayOps {
             .iter()
             .zip(w.iter())
             .fold((0.0, 0.0), |(acc, norm), (x, z)| {
-                let norm = norm + (*z as f64);
-                let acc = acc + *x * (*z as f64);
+                let z = *z as f64;
+                let norm = norm + z;
+                let acc = x.mul_add(z, acc);
                 (acc, norm)
             });
         if norm == 0.0 {

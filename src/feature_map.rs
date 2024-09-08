@@ -10,9 +10,7 @@ use std::{marker::PhantomData, ops::{self, Range}};
 
 /// A two dimensional feature collection where features are sorted by the `X` dimension
 /// and each feature is internally sorted by the `Y` dimension.
-pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize>
-where
-    <Self as ops::Index<usize>>::Output: CoordinateLike<X>,
+pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output = T>
 {
     fn search_by(&self, query: f64) -> Result<usize, usize>;
     fn len(&self) -> usize;
@@ -184,7 +182,7 @@ where
         if v <= lower_bound || v >= upper_bound {
             lower_index += 1;
         }
-        
+
         lower_index..upper_index + 1
     }
 
@@ -198,8 +196,7 @@ where
 
 /// A mutable kind of [`FeatureMapLike`] which new features can be added to.
 pub trait FeatureMapLikeMut<X, Y, T: FeatureLike<X, Y>> : FeatureMapLike<X, Y, T>
-where
-    <Self as ops::Index<usize>>::Output: CoordinateLike<X> {
+{
 
     /// Add `feature` to the collection, maintaining sort order and feature
     /// indexing.
