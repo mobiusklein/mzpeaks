@@ -272,6 +272,7 @@ impl<X, Y> FromIterator<(f64, f64, f32)>
 
 /// A non-owning version of [`SimpleFeature`]
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SimpleFeatureView<'a, X, Y> {
     pub label: f64,
     y: &'a [f64],

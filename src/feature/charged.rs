@@ -301,6 +301,7 @@ impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
 
 /// A non-owning version of [`ChargedFeature`]
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ChargedFeatureView<'a, X, Y> {
     feature: FeatureView<'a, X, Y>,
     pub charge: i32,

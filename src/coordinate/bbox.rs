@@ -303,6 +303,13 @@ pub struct QuadTree<
     pub nodes: Vec<QuadTreeNode<V1, V2, T>>,
 }
 
+impl<V1: PartialOrd + Copy + Num, V2: PartialOrd + Copy + Num, T: Span2D<DimType1 = V1, DimType2 = V2>> FromIterator<T> for QuadTree<V1, V2, T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let items = iter.into_iter().collect();
+        Self::build(items)
+    }
+}
+
 impl<
         'a,
         V1: PartialOrd + Copy + Num,
@@ -494,6 +501,8 @@ impl<
         nodes
     }
 }
+
+
 
 #[derive(Debug)]
 pub struct QueryIter<

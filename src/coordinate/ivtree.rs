@@ -120,6 +120,12 @@ pub struct IntervalTree<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
     pub nodes: Vec<IntervalTreeNode<V, T>>,
 }
 
+impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> FromIterator<T> for IntervalTree<V, T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::new(Vec::from_iter(iter))
+    }
+}
+
 impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> {
     pub fn len(&self) -> usize {
         self.nodes.len()
@@ -399,6 +405,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         let mut stack: VecDeque<(usize, Vec<T>, BuildeTreeSide)> = VecDeque::new();
         let entry = (0, intervals, BuildeTreeSide::Left);
         stack.push_back(entry);
+
         while !stack.is_empty() {
             if let Some((parent, members, side)) = stack.pop_back() {
                 let n = members.len();

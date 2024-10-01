@@ -663,6 +663,7 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for Feature<X, Y> {
 
 /// A non-owning version of [`Feature`]
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FeatureView<'a, X, Y> {
     x: &'a [f64],
     y: &'a [f64],

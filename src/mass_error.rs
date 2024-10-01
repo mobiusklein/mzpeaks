@@ -127,6 +127,11 @@ impl Tolerance {
         let (low, hi) = self.bounds(query);
         RangeInclusive::new(low, hi)
     }
+
+    pub fn as_interval(&self, query: f64) -> crate::coordinate::SimpleInterval<f64> {
+        let bounds = self.bounds(query);
+        bounds.into()
+    }
 }
 
 /// Tolerance objects can by scaled up or down by a floating point value

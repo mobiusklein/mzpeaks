@@ -210,6 +210,7 @@ pub trait FeatureMapLikeMut<X, Y, T: FeatureLike<X, Y>> : FeatureMapLike<X, Y, T
 /// Represents a sorted list of mass spectral features that is a concrete implementation
 /// of [`FeatureMapLike`] and [`FeatureMapLikeMut`]
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FeatureMap<X, Y, T: FeatureLike<X, Y>> {
     features: Vec<T>,
     _x: PhantomData<X>,
@@ -281,6 +282,34 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         } else {
             Self::wrap(features)
         }
+    }
+
+    pub fn earliest_time(&self) -> Option<f64> {
+        self.features.iter().fold(Option::<f64>::None, |prev, feat| {
+            match (prev, feat.start_time()) {
+                (Some(prev), Some(cur)) => {
+                    Some(prev.min(cur))
+                },
+                (None, Some(cur)) => {
+                    Some(cur)
+                },
+                (_, _) => prev
+            }
+        })
+    }
+
+    pub fn latest_time(&self) -> Option<f64> {
+        self.features.iter().fold(Option::<f64>::None, |prev, feat| {
+            match (prev, feat.start_time()) {
+                (Some(prev), Some(cur)) => {
+                    Some(prev.max(cur))
+                },
+                (None, Some(cur)) => {
+                    Some(cur)
+                },
+                (_, _) => prev
+            }
+        })
     }
 }
 
@@ -392,6 +421,7 @@ impl_slicing!(FeatureMap<X, Y, T>, X, Y, T: FeatureLike<X, Y>);
 
 
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FeatureMapView<'a, X, Y, T: FeatureLike<X, Y>> {
     features: &'a [T],
     _x: PhantomData<X>,

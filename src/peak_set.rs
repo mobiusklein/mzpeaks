@@ -13,7 +13,7 @@
 //! and [`PeakCollection::between`].
 //!
 use std::fmt::{self, Display};
-use std::iter::{Extend, FromIterator};
+use std::iter::{Extend, FromIterator, FusedIterator};
 use std::marker::{self, PhantomData};
 use std::ops::{self, Range};
 
@@ -22,8 +22,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::mass_error::Tolerance;
 
-use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
-use crate::peak::{CentroidPeak, DeconvolutedPeak};
+use crate::coordinate::{
+    CoordinateLike, IndexType, IndexedCoordinate, Mass, SimpleInterval, Span1D, MZ,
+};
+use crate::peak::{CentroidPeak, DeconvolutedPeak, IntensityMeasurement};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// When adding a peak to a [`PeakCollection`], indicate
@@ -40,16 +42,28 @@ pub enum OrderUpdateEvent {
 /// A trait for an ordered container of mass spectral peaks. The trait
 /// builds upon [`CoordinateLike`].
 pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T> {
+    /// Get the number of peaks in the collection
     fn len(&self) -> usize;
+
+    /// Test if the collection is empty
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Implement index access
     fn get_item(&self, i: usize) -> &T;
+
+    /// Implement index access without bounds checking.
+    ///
+    /// # Safety
+    /// Only use this method when we can guarantee from context that `i < self.len()`
+    unsafe fn get_item_unchecked(&self, i: usize) -> &T {
+        self.get_slice(0..self.len()).get_unchecked(i)
+    }
+
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
 
-    fn iter(&self) -> impl Iterator<Item = &T>
+    fn iter(&self) -> impl Iterator<Item = &T> + FusedIterator + ExactSizeIterator
     where
         T: 'static;
 
@@ -58,6 +72,76 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
     /// to `query`. The return signature is identical to
     /// [`slice::binary_search_by`][slice::binary_search_by]
     fn search_by(&self, query: f64) -> Result<usize, usize>;
+
+    /// Implementation details of [`PeakCollection::_search_earliest`]
+    fn _earliest_peak(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
+        let (start_bound, end_bound) = error_tolerance.bounds(query);
+        let mut j = i;
+        while j <= 0 {
+            let c = self.get_item(j).coordinate();
+            if c < start_bound {
+                j += 1;
+                break;
+            } else {
+                j = j.saturating_sub(1);
+            }
+        }
+        let c = self.get_item(j).coordinate();
+        if c >= start_bound && c <= end_bound {
+            Some(j)
+        } else {
+            None
+        }
+    }
+
+    /// Implementation details of [`PeakCollection::_search_latest`]
+    fn _latest_peak(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
+        let n = self.len();
+        if i >= n {
+            return None;
+        }
+        let (start_bound, end_bound) = error_tolerance.bounds(query);
+        let mut j = i;
+        while j < n {
+            let c = self.get_item(j).coordinate();
+            if c > end_bound {
+                j = j.saturating_sub(1);
+                break;
+            } else {
+                j += 1
+            }
+        }
+        let c = self.get_item(j).coordinate();
+        if c >= start_bound && c <= end_bound {
+            Some(j)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    /// Find the first index for `query` within `error_tolerance` in
+    /// this peak collection, or `None`.
+    fn _search_earliest(&self, query: f64, error_tolerance: Tolerance) -> Option<usize> {
+        let lower_bound = error_tolerance.bounds(query).0;
+
+        match self.search_by(lower_bound) {
+            Ok(j) => self._earliest_peak(query, error_tolerance, j),
+            Err(j) => self._earliest_peak(query, error_tolerance, j),
+        }
+    }
+
+    #[inline]
+    /// Find the last index for `query` within `error_tolerance` in
+    /// this peak collection, or `None`.
+    fn _search_latest(&self, query: f64, error_tolerance: Tolerance) -> Option<usize> {
+        let upper_bound = error_tolerance.bounds(query).1;
+
+        match self.search_by(upper_bound) {
+            Ok(j) => self._latest_peak(query, error_tolerance, j),
+            Err(j) => self._latest_peak(query, error_tolerance, j),
+        }
+    }
 
     #[inline]
     fn _closest_peak(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
@@ -102,6 +186,68 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
             return None;
         }
         Some(best)
+    }
+
+    /// Find the peak for `query` that satisfies `error_tolerance` with the
+    /// maximum intensity, starting from index `i`.
+    fn most_intense_peak_for(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> where T: IntensityMeasurement {
+        if i >= self.len() {
+            return None;
+        }
+        let mut j = i;
+        let mut best = j;
+        let mut best_int: f32 = 0.0;
+        let n = self.len();
+        let tol = error_tolerance.tol();
+        // search backwards
+        while j > 0 && j < n {
+            let p = self.get_item(j);
+            let y = p.intensity();
+            let err = error_tolerance
+                .call(p.coordinate(), query)
+                .abs();
+            if y < best_int && err < tol {
+                best_int = y;
+                best = j;
+            } else if err > tol {
+                break;
+            }
+            j -= 1;
+        }
+        j = i;
+        // search forwards
+        while j < n {
+            let p = self.get_item(j);
+            let y = p.intensity();
+            let err = error_tolerance
+                .call(p.coordinate(), query)
+                .abs();
+            if y > best_int && err < tol {
+                best_int = y;
+                best = j;
+            } else if err > tol {
+                break;
+            }
+            j += 1;
+        }
+        if best_int == 0.0 {
+            return None;
+        }
+        Some(best)
+    }
+
+    fn total_ion_current(&self) -> f32 where T: IntensityMeasurement + 'static {
+        self.iter().map(|p| p.intensity()).sum()
+    }
+
+    fn base_peak(&'_ self) -> Option<&'_ T> where T: IntensityMeasurement + 'static {
+        self.iter().reduce(|peak, next| {
+            if peak.intensity() >= next.intensity() {
+                peak
+            } else {
+                next
+            }
+        })
     }
 
     #[inline]
@@ -166,6 +312,20 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
 
         let subset = self.get_slice(lower_index..upper_index);
         subset
+    }
+
+    /// Return an iterator over all peaks between `low` and `high` coordinates within
+    /// `error_tolerance`.
+    fn between_iter(
+        &self,
+        low: f64,
+        high: f64,
+        error_tolerance: Tolerance,
+    ) -> BetweenIter<'_, C, T, Self>
+    where
+        Self: Sized,
+    {
+        BetweenIter::new(self, low, high, error_tolerance)
     }
 
     #[inline]
@@ -317,9 +477,10 @@ impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
     }
 
     fn update_bounds(&mut self) {
+        let q = unsafe { self.queries.get_unchecked(self.query_i).coordinate() };
         (self.query_lower_bound, self.query_upper_bound) = self
             .error_tolerance
-            .bounds(self.queries[self.query_i].coordinate());
+            .bounds(q);
     }
 
     fn finalize_query(&mut self) -> bool {
@@ -364,6 +525,98 @@ impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
             self.query_hit_range.next().map(|i| (self.query_i, i))
         } else {
             pair
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BetweenIter<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>> {
+    peaks: &'a P,
+    query_interval: SimpleInterval<f64>,
+    index_iter: <Range<usize> as IntoIterator>::IntoIter,
+    _c: PhantomData<C>,
+    _t: PhantomData<T>,
+}
+
+impl<'a, C, T: CoordinateLike<C> + 'a, P: PeakCollection<T, C>> Iterator
+    for BetweenIter<'a, C, T, P>
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.find_next_peak()
+    }
+}
+
+impl<'a, C, T: CoordinateLike<C> + 'a, P: PeakCollection<T, C>> FusedIterator
+    for BetweenIter<'a, C, T, P>
+{
+}
+
+impl<'a, C, T: CoordinateLike<C> + 'a, P: PeakCollection<T, C>> ExactSizeIterator
+    for BetweenIter<'a, C, T, P>
+{
+    fn len(&self) -> usize {
+        self.index_iter.len()
+    }
+}
+
+impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>> BetweenIter<'a, C, T, P> {
+    fn query_range_as_interval(
+        query_start: f64,
+        query_end: f64,
+        tolerance: Tolerance,
+    ) -> SimpleInterval<f64> {
+        SimpleInterval::new(
+            tolerance.bounds(query_start).0,
+            tolerance.bounds(query_end).1,
+        )
+    }
+
+    pub fn new(peaks: &'a P, query_start: f64, query_end: f64, tolerance: Tolerance) -> Self {
+        let i = peaks
+            ._search_earliest(query_start, tolerance)
+            .unwrap_or_default();
+        let n = peaks.len();
+        let n = (peaks
+            ._search_latest(query_end, tolerance)
+            .unwrap_or_default()
+            + 1)
+        .min(n);
+        let index_iter = (i..n).into_iter();
+        let query_interval = Self::query_range_as_interval(query_start, query_end, tolerance);
+        Self {
+            peaks,
+            query_interval,
+            index_iter,
+            _c: PhantomData,
+            _t: PhantomData,
+        }
+    }
+
+    fn check_next_peak(&mut self) -> (Option<usize>, bool) {
+        if let Some(i) = self.index_iter.next() {
+            let p = unsafe { self.peaks.get_item_unchecked(i) };
+            let c = p.coordinate();
+            if self.query_interval.contains(&c) {
+                (Some(i), false)
+            } else {
+                (None, false)
+            }
+        } else {
+            (None, true)
+        }
+    }
+
+    fn find_next_peak(&mut self) -> Option<&'a T> {
+        loop {
+            let (i, done) = self.check_next_peak();
+            if let Some(i) = i {
+                return Some(unsafe { self.peaks.get_item_unchecked(i) });
+            }
+            if done {
+                return None;
+            }
         }
     }
 }
@@ -550,6 +803,11 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
     }
 
     #[inline]
+    unsafe fn get_item_unchecked(&self, i: usize) -> &P {
+        self.peaks.get_unchecked(i)
+    }
+
+    #[inline]
     fn get_slice(&self, i: ops::Range<usize>) -> &[P] {
         &self.peaks[i]
     }
@@ -560,7 +818,7 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter(&self) -> impl Iterator<Item = &P> {
+    fn iter(&self) -> impl Iterator<Item = &P> + FusedIterator + ExactSizeIterator {
         self.iter()
     }
 }
@@ -769,6 +1027,11 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P,
     }
 
     #[inline]
+    unsafe fn get_item_unchecked(&self, i: usize) -> &P {
+        self.peaks.get_unchecked(i)
+    }
+
+    #[inline]
     fn get_slice(&self, i: ops::Range<usize>) -> &[P] {
         &self.peaks[i]
     }
@@ -779,7 +1042,7 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P,
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter(&self) -> impl Iterator<Item = &P> {
+    fn iter(&self) -> impl Iterator<Item = &P> + FusedIterator + ExactSizeIterator {
         self.iter()
     }
 }
@@ -823,6 +1086,18 @@ impl<'a, P: IndexedCoordinate<C>, C> TryFrom<&'a [P]> for PeakSetView<'a, P, C> 
     fn try_from(value: &'a [P]) -> Result<Self, Self::Error> {
         if PeakSetView::is_sorted(value) {
             Ok(unsafe { PeakSetView::wrap(value) })
+        } else {
+            Err(ViewConversionError::Unsorted)
+        }
+    }
+}
+
+impl<'a, P: IndexedCoordinate<C>, C> TryFrom<&'a PeakSetVec<P, C>> for PeakSetView<'a, P, C> {
+    type Error = ViewConversionError;
+
+    fn try_from(value: &'a PeakSetVec<P, C>) -> Result<Self, Self::Error> {
+        if PeakSetView::is_sorted(value.as_slice()) {
+            Ok(unsafe { PeakSetView::wrap(value.as_slice()) })
         } else {
             Err(ViewConversionError::Unsorted)
         }
