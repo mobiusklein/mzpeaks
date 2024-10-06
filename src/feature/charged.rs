@@ -233,6 +233,10 @@ impl<'a, X, Y> TimeArray<Y> for ChargedFeature<X, Y> {
     fn time_view(&self) -> &[f64] {
         self.feature.time_view()
     }
+
+    fn intensity_view(&self) -> &[f32] {
+        self.feature.intensity_view()
+    }
 }
 
 pub type DeconvolvedLCMSFeature = ChargedFeature<Mass, Time>;
@@ -466,5 +470,9 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeatureView<'a, X, Y> 
 impl<'a, X, Y> TimeArray<Y> for ChargedFeatureView<'a, X, Y> {
     fn time_view(&self) -> &[f64] {
         self.feature.time_view()
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        self.feature.intensity_view()
     }
 }

@@ -312,6 +312,10 @@ impl<X, Y> TimeArray<Y> for Feature<X, Y> {
     fn time_view(&self) -> &[f64] {
         &self.y
     }
+
+    fn intensity_view(&self) -> &[f32] {
+        &self.z
+    }
 }
 
 pub type LCMSFeature = Feature<MZ, Time>;
@@ -892,5 +896,9 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
 impl<'a, X, Y> TimeArray<Y> for FeatureView<'a, X, Y> {
     fn time_view(&self) -> &[f64] {
         self.y
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        &self.z
     }
 }

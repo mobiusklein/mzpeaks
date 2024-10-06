@@ -78,12 +78,19 @@ impl<'a, T, U: TimeInterval<T>> TimeInterval<T> for &'a U {
 pub trait TimeArray<T> : TimeInterval<T> {
     /// A slice over the complete time dimension
     fn time_view(&self) -> &[f64];
+
+    /// A slice over the complete intensity dimension
+    fn intensity_view(&self) -> &[f32];
 }
 
 
 impl<'a, T, U: TimeArray<T>> TimeArray<T> for &'a U {
     fn time_view(&self) -> &[f64] {
         (*self).time_view()
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        (*self).intensity_view()
     }
 }
 

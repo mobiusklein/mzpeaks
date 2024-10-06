@@ -133,6 +133,10 @@ impl<'a, X, Y> TimeArray<Y> for SimpleFeature<X, Y> {
     fn time_view(&self) -> &[f64] {
         &self.y
     }
+
+    fn intensity_view(&self) -> &[f32] {
+        &self.z
+    }
 }
 
 impl<X, Y> PartialEq for SimpleFeature<X, Y> {
@@ -529,5 +533,9 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
 impl<'a, X, Y> TimeArray<Y> for SimpleFeatureView<'a, X, Y> {
     fn time_view(&self) -> &[f64] {
         self.y
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        &self.z
     }
 }
