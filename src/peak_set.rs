@@ -63,7 +63,7 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
 
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
 
-    fn iter(&self) -> impl Iterator<Item = &T> + FusedIterator + ExactSizeIterator
+    fn iter(&self) -> impl Iterator<Item = &T>
     where
         T: 'static;
 
@@ -818,7 +818,7 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter(&self) -> impl Iterator<Item = &P> + FusedIterator + ExactSizeIterator {
+    fn iter(&self) -> impl Iterator<Item = &P> {
         self.iter()
     }
 }
@@ -1042,7 +1042,7 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P,
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter(&self) -> impl Iterator<Item = &P> + FusedIterator + ExactSizeIterator {
+    fn iter(&self) -> impl Iterator<Item = &P> {
         self.iter()
     }
 }

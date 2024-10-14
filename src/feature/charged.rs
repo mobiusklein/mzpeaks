@@ -282,6 +282,10 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.point_iter.size_hint()
+    }
 }
 
 impl<'a, Y> ExactSizeIterator for DeconvolutedPeakIter<'a, Y> {

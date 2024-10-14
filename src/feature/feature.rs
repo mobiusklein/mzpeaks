@@ -381,6 +381,10 @@ impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
             _ => None,
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.xiter.size_hint()
+    }
 }
 
 impl<'a, X, Y> ExactSizeIterator for Iter<'a, X, Y> {
@@ -446,6 +450,10 @@ impl<'a, Y> Iterator for MZPeakIter<'a, Y> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.source.size_hint()
+    }
 }
 
 impl<'a, Y> ExactSizeIterator for MZPeakIter<'a, Y> {
@@ -497,6 +505,10 @@ impl<'a, X, Y> Iterator for IterMut<'a, X, Y> {
             (Some(x), Some(y), Some(z)) => Some((x, y, z)),
             _ => None,
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.xiter.size_hint()
     }
 }
 
@@ -562,6 +574,10 @@ impl<X, Y> Iterator for IntoIter<X, Y> {
             (Some(x), Some(y), Some(z)) => Some((x, y, z)),
             _ => None,
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.xiter.size_hint()
     }
 }
 
