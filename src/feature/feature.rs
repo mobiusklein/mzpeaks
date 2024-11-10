@@ -85,26 +85,28 @@ impl<X, Y> Feature<X, Y> {
 
     /// Sort the feature by the Y dimension
     pub(crate) fn sort_by_y(&mut self) {
-        let mut indices: Vec<_> = (0..self.len()).collect();
-        indices.sort_by_key(|i| NonNan::new(self.y[*i]));
+        let n = self.len();
+        let mut mask: Vec<_> = (0..n).collect();
+        mask.sort_by_key(|i| NonNan::new(self.y[*i]));
 
-        let mut xtmp: Vec<f64> = Vec::new();
-        xtmp.resize(self.len(), 0.0);
+        const TOMBSTONE: usize = usize::MAX;
 
-        let mut ytmp: Vec<f64> = Vec::new();
-        ytmp.resize(self.len(), 0.0);
-
-        let mut ztmp: Vec<f32> = Vec::new();
-        ztmp.resize(self.len(), 0.0);
-
-        for (i, j) in indices.into_iter().enumerate() {
-            xtmp[j] = self.x[i];
-            ytmp[j] = self.y[i];
-            ztmp[j] = self.z[i];
+        for idx in 0..n {
+            if mask[idx] != TOMBSTONE {
+                let mut current_idx = idx;
+                loop {
+                    let next_idx = mask[current_idx];
+                    mask[current_idx] = TOMBSTONE;
+                    if mask[next_idx] == TOMBSTONE {
+                        break;
+                    }
+                    self.x.swap(current_idx, next_idx);
+                    self.y.swap(current_idx, next_idx);
+                    self.z.swap(current_idx, next_idx);
+                    current_idx = next_idx;
+                }
+            }
         }
-        self.x = xtmp;
-        self.y = ytmp;
-        self.z = ztmp;
     }
 
     /// Add a new peak-like reference to the feature at a given y "time" coordinate. If the "time"

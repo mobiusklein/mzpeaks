@@ -111,6 +111,16 @@ pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + Coordinate
         self.iter().nth(index).map(|(x, y, z)| (*x, *y, *z))
     }
 
+    /// Retrieve the first time point, if it exists
+    fn first(&self) -> Option<(f64, f64, f32)> {
+        self.iter().next().map(|(x, y, z)| (*x, *y, *z))
+    }
+
+    /// Retrieve the last time point, if it exists
+    fn last(&self) -> Option<(f64, f64, f32)> {
+        self.iter().last().map(|(x, y, z)| (*x, *y, *z))
+    }
+
     /// Get an immutable reference to feature data at a specified time.Analogous
     /// to combining [`TimeInterval::find_time`] with [`FeatureLike::at`]
     fn at_time(&self, time: f64) -> Option<(f64, f64, f32)> {
@@ -135,7 +145,12 @@ impl<'a, X, Y, T: FeatureLike<X, Y> + TimeInterval<Y>> FeatureLike<X, Y> for &'a
 /// A [`FeatureLike`] type that is also mutable
 pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
     /// Create an iterator that yields (x, y, intensity) mutable references
+    ///
+    /// # Safety
+    /// If the caller mutates the time dimension (slot 1), they are responsible for
+    /// maintaining sorted order.
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)>;
+
     /// Add a new peak-like reference to the feature at a given y "time" coordinate. If the "time"
     /// is not in sorted order, it should automatically re-sort.
     fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64);
@@ -144,13 +159,23 @@ pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
     fn push_raw(&mut self, x: f64, y: f64, z: f32);
 
     /// Get a mutable reference to feature data at a specified index
-    fn at_mut(&mut self, index: usize) -> Option<(&mut f64, &mut f64, &mut f32)> {
-        self.iter_mut().nth(index)
+    fn at_mut(&mut self, index: usize) -> Option<(&mut f64, f64, &mut f32)> {
+        self.iter_mut().nth(index).map(|(x, y, z)| (x, *y, z ))
+    }
+
+    /// Get a mutable reference to feature data at the first index, if it exists
+    fn first_mut(&mut self) -> Option<(&mut f64, f64, &mut f32)> {
+        self.at_mut(0)
+    }
+
+    /// Get a mutable reference to feature data at the last index, if it exists
+    fn last_mut(&mut self) -> Option<(&mut f64, f64, &mut f32)> {
+        self.at_mut(self.len().saturating_sub(1))
     }
 
     /// Get a mutable reference to feature data at a specified time. Analogous
     /// to combining [`TimeInterval::find_time`] with [`FeatureLikeMut::at_mut`]
-    fn at_time_mut(&mut self, time: f64) -> Option<(&mut f64, &mut f64, &mut f32)> {
+    fn at_time_mut(&mut self, time: f64) -> Option<(&mut f64, f64, &mut f32)> {
         if let (Some(ix), _) = self.find_time(time) {
             self.at_mut(ix)
         } else {
