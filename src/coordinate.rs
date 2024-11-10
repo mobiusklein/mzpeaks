@@ -14,6 +14,7 @@ pub use dim::{
     Mass, MassLocated,
     Time, TimeLocated,
     Dimensionless,
+    HasProximity,
 };
 
 pub use range::{CoordinateRange, CoordinateRangeParseError, SimpleInterval, Span1D};

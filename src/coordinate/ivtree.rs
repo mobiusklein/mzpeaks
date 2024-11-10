@@ -9,7 +9,7 @@ use std::{
 
 use num_traits::real::Real;
 
-use super::{SimpleInterval, Span1D};
+use super::{HasProximity, SimpleInterval, Span1D};
 
 #[allow(unused)]
 fn intervals_containing_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borrow<T>>(
@@ -47,7 +47,7 @@ fn intervals_overlapping<
 
 /// A node in [`IntervalTree`] over `T`
 #[derive(Debug, Clone, Default)]
-pub struct IntervalTreeNode<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
+pub struct IntervalTreeNode<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> {
     pub start: V,
     pub end: V,
     pub center: V,
@@ -58,7 +58,7 @@ pub struct IntervalTreeNode<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
     pub right_child: Option<usize>,
 }
 
-impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTreeNode<V, T> {
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Span1D for IntervalTreeNode<V, T> {
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
@@ -70,7 +70,7 @@ impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTreeNode<V
     }
 }
 
-impl<V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
     pub fn new(
         center: V,
         members: Vec<T>,
@@ -116,17 +116,17 @@ enum BuildeTreeSide {
 
 /// An interval tree over `T`
 #[derive(Debug, Clone)]
-pub struct IntervalTree<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
+pub struct IntervalTree<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> {
     pub nodes: Vec<IntervalTreeNode<V, T>>,
 }
 
-impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> FromIterator<T> for IntervalTree<V, T> {
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> FromIterator<T> for IntervalTree<V, T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::new(Vec::from_iter(iter))
     }
 }
 
-impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> {
+impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTree<V, T> {
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
@@ -509,14 +509,14 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
     }
 }
 
-impl<V: Real + Copy + Sum + Default, T: Span1D<DimType = V>> Default for IntervalTree<V, T> {
+impl<V: Real + Sum + Default + HasProximity, T: Span1D<DimType = V>> Default for IntervalTree<V, T> {
     fn default() -> Self {
         let node = IntervalTreeNode::new(V::zero(), vec![], 0, None, None, None);
         Self { nodes: vec![node] }
     }
 }
 
-impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T> {
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T> {
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
@@ -529,12 +529,12 @@ impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T>
 }
 
 #[derive(Debug, Clone)]
-pub struct PreorderIter<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> {
+pub struct PreorderIter<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> {
     tree: &'a IntervalTree<V, T>,
     stack: VecDeque<usize>,
 }
 
-impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> Iterator for PreorderIter<'a, V, T> {
+impl<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Iterator for PreorderIter<'a, V, T> {
     type Item = &'a IntervalTreeNode<V, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -542,7 +542,7 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> Iterator for PreorderIter
     }
 }
 
-impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
+impl<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
     pub fn new(tree: &'a IntervalTree<V, T>) -> Self {
         let stack = if tree.is_empty() {
             VecDeque::new()
@@ -572,7 +572,7 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
 #[derive(Debug)]
 pub struct QueryIter<
     'a,
-    V: Real + Copy + Sum,
+    V: Real + Sum + HasProximity,
     T: Span1D<DimType = V>,
     Q: Span1D<DimType = V> + 'a,
     P: NodeSelectorCriterion<V, T, Q>,
@@ -587,7 +587,7 @@ pub struct QueryIter<
 
 impl<
         'a,
-        V: Real + Copy + Sum,
+        V: Real + Sum + HasProximity,
         T: Span1D<DimType = V>,
         Q: Span1D<DimType = V> + 'a,
         P: NodeSelectorCriterion<V, T, Q>,
@@ -597,7 +597,7 @@ impl<
 
 impl<
         'a,
-        V: Real + Copy + Sum,
+        V: Real + Sum + HasProximity,
         T: Span1D<DimType = V>,
         Q: Span1D<DimType = V> + 'a,
         P: NodeSelectorCriterion<V, T, Q>,
@@ -612,7 +612,7 @@ impl<
 
 impl<
         'a,
-        V: Real + Copy + Sum,
+        V: Real + Sum + HasProximity,
         T: Span1D<DimType = V>,
         Q: Span1D<DimType = V> + 'a,
         P: NodeSelectorCriterion<V, T, Q>,
@@ -692,7 +692,7 @@ impl<
 }
 
 pub trait NodeSelectorCriterion<
-    V: Real + Copy + Sum,
+    V: Real + Sum + HasProximity,
     T: Span1D<DimType = V>,
     Q: Span1D<DimType = V>,
 >
@@ -705,13 +705,13 @@ pub trait NodeSelectorCriterion<
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OverlapPredicate<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
+pub struct OverlapPredicate<V: Real + Sum + HasProximity, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
     _v: PhantomData<V>,
     _t: PhantomData<T>,
     _q: PhantomData<Q>,
 }
 
-impl<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
     NodeSelectorCriterion<V, T, Q> for OverlapPredicate<V, T, Q>
 {
     #[inline(always)]
@@ -734,13 +734,13 @@ impl<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ContainsPredicate<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
+pub struct ContainsPredicate<V: Real + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
     _v: PhantomData<V>,
     _t: PhantomData<T>,
     _q: PhantomData<Q>,
 }
 
-impl<V: Real + Copy + Sum, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>, Q: Span1D<DimType = V>>
     NodeSelectorCriterion<V, T, Q> for ContainsPredicate<V, T, Q>
 {
     #[inline(always)]

@@ -2,13 +2,13 @@
 use num_traits::Num;
 use std::{collections::VecDeque, iter::FusedIterator, marker::PhantomData, ops::Sub};
 
-use super::range::{CoordinateRange, SimpleInterval, Span1D};
+use super::{range::{CoordinateRange, SimpleInterval, Span1D}, HasProximity};
 
 /** An inclusive interval over two dimensions
 */
 pub trait Span2D {
-    type DimType1: PartialOrd + Copy;
-    type DimType2: PartialOrd + Copy;
+    type DimType1: HasProximity;
+    type DimType2: HasProximity;
 
     fn start(&self) -> (Self::DimType1, Self::DimType2);
     fn end(&self) -> (Self::DimType1, Self::DimType2);
@@ -55,12 +55,12 @@ impl<T: Span2D> Span2D for &T {
 
 /// A basic [`Span2D`] implementation
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
-pub struct BoundingBox<V1: PartialOrd, V2: PartialOrd> {
+pub struct BoundingBox<V1: HasProximity, V2: HasProximity> {
     pub start: (V1, V2),
     pub end: (V1, V2),
 }
 
-impl<V1: PartialOrd + Copy, V2: PartialOrd + Copy> Span2D for BoundingBox<V1, V2> {
+impl<V1: HasProximity, V2: HasProximity> Span2D for BoundingBox<V1, V2> {
     type DimType1 = V1;
 
     type DimType2 = V2;
@@ -74,7 +74,7 @@ impl<V1: PartialOrd + Copy, V2: PartialOrd + Copy> Span2D for BoundingBox<V1, V2
     }
 }
 
-impl<V1: PartialOrd + Copy, V2: PartialOrd + Copy> BoundingBox<V1, V2> {
+impl<V1: HasProximity, V2: HasProximity> BoundingBox<V1, V2> {
     pub fn new(start: (V1, V2), end: (V1, V2)) -> Self {
         Self { start, end }
     }
@@ -153,8 +153,8 @@ impl<X, Y> CoordinateBox<X, Y> {
 
 #[derive(Debug, Clone, Default)]
 pub struct QuadTreeNode<
-    V1: PartialOrd + Copy,
-    V2: PartialOrd + Copy,
+    V1: HasProximity,
+    V2: HasProximity,
     T: Span2D<DimType1 = V1, DimType2 = V2>,
 > {
     pub start: (V1, V2),
@@ -168,8 +168,8 @@ pub struct QuadTreeNode<
 }
 
 impl<
-        V1: PartialOrd + Copy + Num,
-        V2: PartialOrd + Copy + Num,
+        V1: HasProximity + Num,
+        V2: HasProximity + Num,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > From<BoundingBox<V1, V2>> for QuadTreeNode<V1, V2, T>
 {
@@ -179,8 +179,8 @@ impl<
 }
 
 impl<
-        V1: PartialOrd + Copy + Num,
-        V2: PartialOrd + Copy + Num,
+        V1: HasProximity + Num,
+        V2: HasProximity + Num,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > QuadTreeNode<V1, V2, T>
 {
@@ -276,7 +276,7 @@ impl<
     }
 }
 
-impl<V1: PartialOrd + Copy, V2: PartialOrd + Copy, T: Span2D<DimType1 = V1, DimType2 = V2>> Span2D
+impl<V1: HasProximity, V2: HasProximity, T: Span2D<DimType1 = V1, DimType2 = V2>> Span2D
     for QuadTreeNode<V1, V2, T>
 {
     type DimType1 = V1;
@@ -296,14 +296,14 @@ const SPLIT_THRESHOLD: usize = 8;
 
 #[derive(Debug, Clone, Default)]
 pub struct QuadTree<
-    V1: PartialOrd + Copy + Num,
-    V2: PartialOrd + Copy + Num,
+    V1: HasProximity + Num,
+    V2: HasProximity + Num,
     T: Span2D<DimType1 = V1, DimType2 = V2>,
 > {
     pub nodes: Vec<QuadTreeNode<V1, V2, T>>,
 }
 
-impl<V1: PartialOrd + Copy + Num, V2: PartialOrd + Copy + Num, T: Span2D<DimType1 = V1, DimType2 = V2>> FromIterator<T> for QuadTree<V1, V2, T> {
+impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, DimType2 = V2>> FromIterator<T> for QuadTree<V1, V2, T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let items = iter.into_iter().collect();
         Self::build(items)
@@ -312,8 +312,8 @@ impl<V1: PartialOrd + Copy + Num, V2: PartialOrd + Copy + Num, T: Span2D<DimType
 
 impl<
         'a,
-        V1: PartialOrd + Copy + Num,
-        V2: PartialOrd + Copy + Num,
+        V1: HasProximity + Num,
+        V2: HasProximity + Num,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > QuadTree<V1, V2, T>
 {
@@ -507,8 +507,8 @@ impl<
 #[derive(Debug)]
 pub struct QueryIter<
     'a,
-    V1: Num + PartialOrd + Copy,
-    V2: Num + PartialOrd + Copy,
+    V1: Num + HasProximity,
+    V2: Num + HasProximity,
     T: Span2D<DimType1 = V1, DimType2 = V2>,
     Q: Span2D<DimType1 = V1, DimType2 = V2>,
     P: NodeSelectorCriterion<V1, V2, T, Q>,
@@ -523,8 +523,8 @@ pub struct QueryIter<
 
 impl<
         'a,
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
         Q: Span2D<DimType1 = V1, DimType2 = V2>,
         P: NodeSelectorCriterion<V1, V2, T, Q>,
@@ -534,8 +534,8 @@ impl<
 
 impl<
         'a,
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
         Q: Span2D<DimType1 = V1, DimType2 = V2>,
         P: NodeSelectorCriterion<V1, V2, T, Q>,
@@ -550,8 +550,8 @@ impl<
 
 impl<
         'a,
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
         Q: Span2D<DimType1 = V1, DimType2 = V2>,
         P: NodeSelectorCriterion<V1, V2, T, Q>,
@@ -624,8 +624,8 @@ impl<
 }
 
 pub trait NodeSelectorCriterion<
-    V1: Num + PartialOrd + Copy,
-    V2: Num + PartialOrd + Copy,
+    V1: Num + HasProximity,
+    V2: Num + HasProximity,
     T: Span2D<DimType1 = V1, DimType2 = V2>,
     Q: Span2D<DimType1 = V1, DimType2 = V2>,
 >
@@ -639,8 +639,8 @@ pub trait NodeSelectorCriterion<
 
 #[derive(Debug, Clone, Copy)]
 pub struct OverlapPredicate<
-    V1: Num + PartialOrd + Copy,
-    V2: Num + PartialOrd + Copy,
+    V1: Num + HasProximity,
+    V2: Num + HasProximity,
     T: Span2D<DimType1 = V1, DimType2 = V2>,
     Q: Span2D<DimType1 = V1, DimType2 = V2>,
 > {
@@ -651,8 +651,8 @@ pub struct OverlapPredicate<
 }
 
 impl<
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
         Q: Span2D<DimType1 = V1, DimType2 = V2>,
     > NodeSelectorCriterion<V1, V2, T, Q> for OverlapPredicate<V1, V2, T, Q>
@@ -691,8 +691,8 @@ pub struct ContainsPredicate<
 }
 
 impl<
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
         Q: Span2D<DimType1 = V1, DimType2 = V2>,
     > NodeSelectorCriterion<V1, V2, T, Q> for ContainsPredicate<V1, V2, T, Q>
@@ -722,8 +722,8 @@ impl<
 #[derive(Debug)]
 pub struct PreorderIter<
     'a,
-    V1: Num + PartialOrd + Copy,
-    V2: Num + PartialOrd + Copy,
+    V1: Num + HasProximity,
+    V2: Num + HasProximity,
     T: Span2D<DimType1 = V1, DimType2 = V2>,
 > {
     ivtree: &'a QuadTree<V1, V2, T>,
@@ -732,8 +732,8 @@ pub struct PreorderIter<
 
 impl<
         'a,
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > Iterator for PreorderIter<'a, V1, V2, T>
 {
@@ -746,8 +746,8 @@ impl<
 
 impl<
         'a,
-        V1: Num + PartialOrd + Copy,
-        V2: Num + PartialOrd + Copy,
+        V1: Num + HasProximity,
+        V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > PreorderIter<'a, V1, V2, T>
 {
@@ -781,6 +781,8 @@ mod test {
         let x = BoundingBox::new((5.0, 3.0), (10.0, 6.0));
         assert_eq!(x.start(), (5.0, 3.0));
         assert_eq!(x.end(), (10.0, 6.0));
+
+        assert!(x.overlaps(&x));
 
         let y = BoundingBox::new((7.0, 3.0), (14.0, 6.0));
 

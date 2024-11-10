@@ -2,7 +2,7 @@
 
 pub use crate::coordinate::{
     CoordinateLike, CoordinateLikeMut, CoordinateSystem as _, IndexedCoordinate, MZLocated,
-    MassLocated,
+    MassLocated, HasProximity,
 };
 pub use crate::feature::{
     FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeArray, TimeInterval,

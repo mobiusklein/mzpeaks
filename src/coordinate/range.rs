@@ -8,7 +8,7 @@ use std::{
 };
 
 
-use super::CoordinateLike;
+use super::{CoordinateLike, HasProximity};
 
 
 /// An interval within a single dimension
@@ -67,7 +67,7 @@ impl<C> Default for CoordinateRange<C> {
 /** An inclusive interval over a single dimension
 */
 pub trait Span1D {
-    type DimType: PartialOrd + Copy;
+    type DimType: HasProximity;
 
     fn start(&self) -> Self::DimType;
     fn end(&self) -> Self::DimType;
@@ -113,7 +113,7 @@ impl<C> Span1D for CoordinateRange<C> {
     }
 }
 
-impl<T: Copy + PartialOrd> Span1D for Range<T> {
+impl<T: HasProximity> Span1D for Range<T> {
     type DimType = T;
 
     fn start(&self) -> Self::DimType {
@@ -138,7 +138,7 @@ impl<V: PartialOrd> SimpleInterval<V> {
     }
 }
 
-impl<V: PartialOrd + Copy> Span1D for SimpleInterval<V> {
+impl<V: HasProximity> Span1D for SimpleInterval<V> {
     type DimType = V;
 
     fn start(&self) -> Self::DimType {

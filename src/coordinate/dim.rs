@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use num_traits::{Float, FromPrimitive};
+
 /// An enum over the different coordinate planes
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Dimension {
@@ -220,5 +222,60 @@ impl<T: IndexedCoordinate<C>, C> IndexedCoordinate<C> for &mut T {
 
     fn set_index(&mut self, index: IndexType) {
         (**self).set_index(index)
+    }
+}
+
+pub(crate) fn _isclose<T>(x: T, y: T, rtol: T, atol: T) -> bool
+where
+    T: Float,
+{
+    (x - y).abs() <= (atol + rtol * y.abs())
+}
+
+pub(crate) fn isclose<T>(x: T, y: T) -> bool
+where
+    T: Float + FromPrimitive,
+{
+    _isclose(x, y, T::from_f64(1e-5).unwrap(), T::from_f64(1e-8).unwrap())
+}
+
+pub trait HasProximity : PartialEq + PartialOrd + Copy {
+    fn is_close(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+macro_rules! impl_has_proximity {
+    ($t:ty) => {
+        impl $crate::coordinate::HasProximity for $t {
+            fn is_close(&self, other: &Self) -> bool {
+                isclose(*self, *other)
+            }
+        }
+    };
+}
+
+impl_has_proximity!(f32);
+impl_has_proximity!(f64);
+
+macro_rules! impl_has_proximity_cast {
+    ($t:ty) => {
+        impl $crate::coordinate::HasProximity for $t {
+            fn is_close(&self, other: &Self) -> bool {
+                isclose(*self as f64, *other as f64)
+            }
+        }
+    };
+}
+
+impl_has_proximity_cast!(i32);
+impl_has_proximity_cast!(i64);
+
+impl<T: HasProximity> HasProximity for Option<T> {
+    fn is_close(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Some(x), Some(y)) => x.is_close(y),
+            _ => false,
+        }
     }
 }
