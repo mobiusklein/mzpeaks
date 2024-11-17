@@ -7,9 +7,7 @@ use std::{
     str::FromStr,
 };
 
-
 use super::{CoordinateLike, HasProximity};
-
 
 /// An interval within a single dimension
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -49,8 +47,10 @@ impl<C> CoordinateRange<C> {
             Bound::Excluded(y) => *y,
             Bound::Unbounded => f64::INFINITY,
         };
-        self.end.unwrap_or(f64::INFINITY) >= interval_start
-            && interval_end >= self.start.unwrap_or(0.0)
+        (self.end.unwrap_or(f64::INFINITY) >= interval_start
+            && interval_end >= self.start.unwrap_or(0.0))
+            || (self.end.is_close(&Some(interval_end))
+                && self.start.is_close(&Some(interval_start)))
     }
 }
 
@@ -73,19 +73,26 @@ pub trait Span1D {
     fn end(&self) -> Self::DimType;
 
     fn contains(&self, i: &Self::DimType) -> bool {
-        self.start() <= *i && *i <= self.end()
+        (self.start() <= *i && *i <= self.end()) || (self.start().is_close(i) || self.end().is_close(i))
+    }
+
+    fn is_close<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
+        self.start().is_close(&interval.start()) && self.end().is_close(&interval.end())
     }
 
     fn overlaps<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
-        self.end() >= interval.start() && interval.end() >= self.start()
+        (self.end() >= interval.start() && interval.end() >= self.start())
+            || self.is_close(&interval)
     }
 
     fn is_contained_in_interval<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
-        self.start() >= interval.start() && self.end() <= interval.end()
+        (self.start() >= interval.start() && self.end() <= interval.end())
+            || self.is_close(&interval)
     }
 
     fn contains_interval<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
-        self.start() <= interval.start() && self.end() >= interval.end()
+        (self.start() <= interval.start() && self.end() >= interval.end())
+            || self.is_close(&interval)
     }
 }
 
@@ -161,7 +168,6 @@ impl<V: PartialOrd> From<Range<V>> for SimpleInterval<V> {
         Self::new(value.start, value.end)
     }
 }
-
 
 #[derive(Debug)]
 pub enum CoordinateRangeParseError {

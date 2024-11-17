@@ -520,11 +520,11 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Span1D for IntervalTr
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
-        self.nodes[0].start()
+        self.nodes.first().map(|x| x.start()).unwrap_or_else(|| V::zero())
     }
 
     fn end(&self) -> Self::DimType {
-        self.nodes[0].end()
+        self.nodes.first().map(|x| x.end()).unwrap_or_else(|| V::zero())
     }
 }
 

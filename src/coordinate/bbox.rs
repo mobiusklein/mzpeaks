@@ -13,6 +13,20 @@ pub trait Span2D {
     fn start(&self) -> (Self::DimType1, Self::DimType2);
     fn end(&self) -> (Self::DimType1, Self::DimType2);
 
+    fn is_close(&self, other: impl Span2D<DimType1 = Self::DimType1, DimType2 = Self::DimType2>) -> bool {
+        let s1 = self.start();
+        let s2 = other.start();
+        if !(s1.0.is_close(&s2.0) && s1.1.is_close(&s2.1)) {
+            return false
+        }
+        let s1 = self.end();
+        let s2 = other.end();
+        if !(s1.0.is_close(&s2.0) && s1.1.is_close(&s2.1)) {
+            return false
+        }
+        true
+    }
+
     fn contains(&self, i: (&Self::DimType1, &Self::DimType2)) -> bool {
         let (x, y) = i;
         let (sx, sy) = self.start();
@@ -28,14 +42,14 @@ pub trait Span2D {
         &self,
         other: impl Span2D<DimType1 = Self::DimType1, DimType2 = Self::DimType2>,
     ) -> bool {
-        self.start() <= other.start() && self.end() >= other.end()
+        (self.start() <= other.start() && self.end() >= other.end()) || self.is_close(other)
     }
 
     fn overlaps<T: Span2D<DimType1 = Self::DimType1, DimType2 = Self::DimType2>>(
         &self,
         interval: &T,
     ) -> bool {
-        self.end() >= interval.start() && interval.end() >= self.start()
+        (self.end() >= interval.start() && interval.end() >= self.start()) || self.is_close(interval)
     }
 }
 

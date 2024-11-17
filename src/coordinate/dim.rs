@@ -258,18 +258,18 @@ macro_rules! impl_has_proximity {
 impl_has_proximity!(f32);
 impl_has_proximity!(f64);
 
-macro_rules! impl_has_proximity_cast {
+macro_rules! impl_has_proximity_exact {
     ($t:ty) => {
         impl $crate::coordinate::HasProximity for $t {
             fn is_close(&self, other: &Self) -> bool {
-                isclose(*self as f64, *other as f64)
+                self == other
             }
         }
     };
 }
 
-impl_has_proximity_cast!(i32);
-impl_has_proximity_cast!(i64);
+impl_has_proximity_exact!(i32);
+impl_has_proximity_exact!(i64);
 
 impl<T: HasProximity> HasProximity for Option<T> {
     fn is_close(&self, other: &Self) -> bool {
