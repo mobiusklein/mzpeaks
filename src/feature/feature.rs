@@ -331,7 +331,7 @@ where
         self.len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         self.iter()
     }
 }
@@ -364,14 +364,14 @@ pub struct Iter<'a, X, Y> {
 }
 
 impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
-    type Item = (&'a f64, &'a f64, &'a f32);
+    type Item = (f64, f64, f32);
 
     fn next(&mut self) -> Option<Self::Item> {
         let x = self.xiter.next();
         let y = self.yiter.next();
         let z = self.ziter.next();
         match (x, y, z) {
-            (Some(x), Some(y), Some(z)) => Some((x, y, z)),
+            (Some(x), Some(y), Some(z)) => Some((*x, *y, *z)),
             _ => None,
         }
     }
@@ -379,7 +379,7 @@ impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
         let (x, y, z) = (self.xiter.nth(n), self.yiter.nth(n), self.ziter.nth(n));
         match (x, y, z) {
-            (Some(x), Some(y), Some(z)) => Some((x, y, z)),
+            (Some(x), Some(y), Some(z)) => Some((*x, *y, *z)),
             _ => None,
         }
     }
@@ -401,7 +401,7 @@ impl<'a, X, Y> DoubleEndedIterator for Iter<'a, X, Y> {
         let y = self.yiter.next_back();
         let z = self.ziter.next_back();
         match (x, y, z) {
-            (Some(x), Some(y), Some(z)) => Some((x, y, z)),
+            (Some(x), Some(y), Some(z)) => Some((*x, *y, *z)),
             _ => None,
         }
     }
@@ -440,14 +440,14 @@ impl<'a, Y> Iterator for MZPeakIter<'a, Y> {
     fn next(&mut self) -> Option<Self::Item> {
         let xyz = self.source.next();
         match xyz {
-            Some((x, y, z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
+            Some((x, y, z)) => Some((CentroidPeak::new(x, z, 0), y)),
             _ => None,
         }
     }
 
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
         if let Some((x, y, z)) = self.source.nth(n) {
-            Some((CentroidPeak::new(*x, *z, 0), *y))
+            Some((CentroidPeak::new(x, z, 0), y))
         } else {
             None
         }
@@ -468,7 +468,7 @@ impl<'a, Y> DoubleEndedIterator for MZPeakIter<'a, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let xyz = self.source.next_back();
         match xyz {
-            Some((x, y, z)) => Some((CentroidPeak::new(*x, *z, 0), *y)),
+            Some((x, y, z)) => Some((CentroidPeak::new(x, z, 0), y)),
             _ => None,
         }
     }
@@ -841,7 +841,7 @@ where
         self.len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         self.iter()
     }
 

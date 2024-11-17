@@ -1,11 +1,12 @@
 //! A prelude to bring into scope all the traits of this library.
 
 pub use crate::coordinate::{
-    CoordinateLike, CoordinateLikeMut, CoordinateSystem as _, IndexedCoordinate, MZLocated,
-    MassLocated, HasProximity,
+    CoordinateLike, CoordinateLikeMut, CoordinateSystem as _, HasProximity, IndexedCoordinate,
+    IonMobilityLocated, MZLocated, MassLocated, TimeLocated, Span1D, Span2D
 };
 pub use crate::feature::{
-    FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeArray, TimeInterval,
+    FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut, SplittableFeatureLike,
+    TimeArray, TimeInterval,
 };
 pub use crate::feature_map::{FeatureMapLike, FeatureMapLikeMut};
 pub use crate::mass_error::Tolerance;

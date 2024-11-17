@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, ops::RangeBounds};
 
-use crate::{coordinate::CoordinateLike, CoordinateRange, IntensityMeasurement};
+use crate::{coordinate::CoordinateLike, CoordinateRange, IntensityMeasurement, IntensityMeasurementMut};
 
 /// Represent an interval of time
 pub trait TimeInterval<T> {
@@ -100,7 +100,7 @@ pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + Coordinate
     /// The number of points in the feature
     fn len(&self) -> usize;
     /// Create an iterator that yields (x, y, intensity) references
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)>;
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)>;
     /// Check if the feature has any points in it
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -108,17 +108,17 @@ pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + Coordinate
 
     /// Get an immutable reference to feature data at a specified index
     fn at(&self, index: usize) -> Option<(f64, f64, f32)> {
-        self.iter().nth(index).map(|(x, y, z)| (*x, *y, *z))
+        self.iter().nth(index).map(|(x, y, z)| (x, y, z))
     }
 
     /// Retrieve the first time point, if it exists
     fn first(&self) -> Option<(f64, f64, f32)> {
-        self.iter().next().map(|(x, y, z)| (*x, *y, *z))
+        self.iter().next()
     }
 
     /// Retrieve the last time point, if it exists
     fn last(&self) -> Option<(f64, f64, f32)> {
-        self.iter().last().map(|(x, y, z)| (*x, *y, *z))
+        self.iter().last()
     }
 
     /// Get an immutable reference to feature data at a specified time.Analogous
@@ -137,7 +137,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y> + TimeInterval<Y>> FeatureLike<X, Y> for &'a
         (*self).len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         (*self).iter()
     }
 }
@@ -299,7 +299,7 @@ pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
     {
         let mut prev = self.at(0).unwrap_or_default();
         let mut mask = Vec::with_capacity(self.len());
-        for cur in self.iter().map(|(x, y, z)| (*x, *y, *z)) {
+        for cur in self.iter().map(|(x, y, z)| (x, y, z)) {
             mask.push(!f(prev, cur));
             prev = cur;
         }
@@ -310,5 +310,87 @@ pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
     /// in the time dimension
     fn split_sparse(&'a self, max_gap_size: f64) -> Vec<Self::ViewType> {
         self.split_when(|(_, prev_time, _), (_, cur_time, _)| (cur_time - prev_time) > max_gap_size)
+    }
+}
+
+pub trait FeatureLikeNDLike<T, Y>: IntensityMeasurement + TimeInterval<Y> {
+    type Point: IntensityMeasurement + CoordinateLike<Y>;
+
+    /// The number of points in the feature
+    fn len(&self) -> usize;
+    /// Create an iterator that yields (x, y, intensity) references
+    fn iter(&self) -> impl Iterator<Item = Self::Point>;
+    /// Check if the feature has any points in it
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get an immutable reference to feature data at a specified index
+    fn at(&self, index: usize) -> Option<Self::Point> {
+        self.iter().nth(index)
+    }
+
+    /// Retrieve the first time point, if it exists
+    fn first(&self) -> Option<Self::Point> {
+        self.iter().next()
+    }
+
+    /// Retrieve the last time point, if it exists
+    fn last(&self) -> Option<Self::Point> {
+        self.iter().last()
+    }
+
+    /// Get an immutable reference to feature data at a specified time.Analogous
+    /// to combining [`TimeInterval::find_time`] with [`FeatureLike::at`]
+    fn at_time(&self, time: f64) -> Option<Self::Point> {
+        if let (Some(ix), _) = self.find_time(time) {
+            self.at(ix)
+        } else {
+            None
+        }
+    }
+}
+
+pub trait FeatureLikeNDLikeMut<'a, T, Y>: FeatureLikeNDLike<T, Y> {
+    type PointMutRef: IntensityMeasurement + IntensityMeasurementMut + CoordinateLike<Y>;
+
+    /// Create an iterator that yields (x, y, intensity) mutable references
+    ///
+    /// # Safety
+    /// If the caller mutates the time dimension (slot 1), they are responsible for
+    /// maintaining sorted order.
+    fn iter_mut(&'a mut self) -> impl Iterator<Item = Self::PointMutRef>;
+
+    /// Add a new peak-like reference to the feature at a given y "time" coordinate. If the "time"
+    /// is not in sorted order, it should automatically re-sort.
+    fn push<X: Into<Self::Point>>(&mut self, pt: X, time: f64);
+
+    /// As [`FeatureLikeMut::push`], but instead add raw values instead of deriving them from
+    /// a peak-like reference.
+    fn push_raw(&mut self, point: Self::Point);
+
+    /// Get a mutable reference to feature data at a specified index
+    fn at_mut(&'a mut self, index: usize) -> Option<Self::PointMutRef> {
+        self.iter_mut().nth(index)
+    }
+
+    /// Get a mutable reference to feature data at the first index, if it exists
+    fn first_mut(&'a mut self) -> Option<Self::PointMutRef> {
+        self.at_mut(0)
+    }
+
+    /// Get a mutable reference to feature data at the last index, if it exists
+    fn last_mut(&'a mut self) -> Option<Self::PointMutRef> {
+        self.at_mut(self.len().saturating_sub(1))
+    }
+
+    /// Get a mutable reference to feature data at a specified time. Analogous
+    /// to combining [`TimeInterval::find_time`] with [`FeatureLikeMut::at_mut`]
+    fn at_time_mut(&'a mut self, time: f64) -> Option<Self::PointMutRef> {
+        if let (Some(ix), _) = self.find_time(time) {
+            self.at_mut(ix)
+        } else {
+            None
+        }
     }
 }

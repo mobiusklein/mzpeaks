@@ -79,7 +79,7 @@ where
         <Feature<X, Y> as FeatureLike<X, Y>>::len(&self.feature)
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         <Feature<X, Y> as FeatureLike<X, Y>>::iter(&self.feature)
     }
 }
@@ -264,8 +264,8 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.next() {
             Some((
-                DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
-                *time,
+                DeconvolutedPeak::new(mass, intensity, self.source.charge, 0),
+                time,
             ))
         } else {
             None
@@ -275,8 +275,8 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.nth(n) {
             Some((
-                DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
-                *time,
+                DeconvolutedPeak::new(mass, intensity, self.source.charge, 0),
+                time,
             ))
         } else {
             None
@@ -298,8 +298,8 @@ impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.next_back() {
             Some((
-                DeconvolutedPeak::new(*mass, *intensity, self.source.charge, 0),
-                *time,
+                DeconvolutedPeak::new(mass, intensity, self.source.charge, 0),
+                time,
             ))
         } else {
             None
@@ -377,7 +377,7 @@ where
         self.feature.len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         self.iter()
     }
 

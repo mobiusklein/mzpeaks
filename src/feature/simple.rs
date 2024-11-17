@@ -223,11 +223,11 @@ impl<X, Y> FeatureLike<X, Y> for SimpleFeature<X, Y> {
         self.y.len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         self.y
             .iter()
             .zip(self.z.iter())
-            .map(|(y, z)| (&self.label, y, z))
+            .map(|(y, z)| (self.label, *y, *z))
     }
 }
 
@@ -426,11 +426,11 @@ impl<'a, X, Y> FeatureLike<X, Y> for SimpleFeatureView<'a, X, Y> {
         self.y.len()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         self.y
             .iter()
             .zip(self.z.iter())
-            .map(|(y, z)| (&self.label, y, z))
+            .map(|(y, z)| (self.label, *y, *z))
     }
 }
 

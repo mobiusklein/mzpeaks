@@ -5,11 +5,15 @@
 
 mod charged;
 mod feature;
+mod ndim;
 mod simple;
 mod traits;
 mod util;
 
-pub use traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval, TimeArray};
+pub use traits::{
+    FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut, SplittableFeatureLike,
+    TimeArray, TimeInterval,
+};
 
 pub use charged::{
     ChargedFeature, ChargedFeatureView, DeconvolutedPeakIter, DeconvolvedIMSFeature,
@@ -19,6 +23,9 @@ pub use feature::{
     Feature, FeatureView, IMSFeature, IntoIter, Iter, IterMut, LCMSFeature, MZPeakIter,
 };
 pub use simple::{SimpleFeature, SimpleFeatureView};
+pub use ndim::{
+    NDFeature, NDIter, NDPoint, NDIterMut, NDPointMutRef
+};
 
 #[cfg(test)]
 mod test {
