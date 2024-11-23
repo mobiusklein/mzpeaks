@@ -64,9 +64,9 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
 
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
 
-    fn iter(&self) -> impl Iterator<Item = &T>
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
     where
-        T: 'static;
+        T: 'a;
 
     /// Most basic method for coordinate search, find the
     /// index in this collection whose coordinate value is nearest
@@ -243,14 +243,14 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
 
     fn total_ion_current(&self) -> f32
     where
-        T: IntensityMeasurement + 'static,
+        T: IntensityMeasurement,
     {
         self.iter().map(|p| p.intensity()).sum()
     }
 
     fn base_peak(&'_ self) -> Option<&'_ T>
     where
-        T: IntensityMeasurement + 'static,
+        T: IntensityMeasurement,
     {
         self.iter().reduce(|peak, next| {
             if peak.intensity() >= next.intensity() {
@@ -827,7 +827,7 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter(&self) -> impl Iterator<Item = &P> {
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a P> where P: 'a {
         self.iter()
     }
 }
@@ -1051,7 +1051,7 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P,
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter(&self) -> impl Iterator<Item = &P> {
+    fn iter<'b>(&'b self) -> impl Iterator<Item = &'b P> where P: 'b {
         self.iter()
     }
 }
@@ -1242,6 +1242,14 @@ mod test {
 
         let j = view._search_latest(1165.60669, Tolerance::Da(1.2)).unwrap();
         assert_eq!(i + 1, j);
+
+        let tic_ref: f32 = PeakCollection::iter(&view).map(|p| p.intensity()).sum();
+        let tic = view.total_ion_current();
+        assert_eq!(tic, tic_ref);
+
+        let bp = peaks.base_peak().unwrap();
+        let bp_ref = view.base_peak().unwrap();
+        assert_eq!(bp, bp_ref);
     }
 
     #[test]
