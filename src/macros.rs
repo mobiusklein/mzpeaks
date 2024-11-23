@@ -27,7 +27,7 @@ macro_rules! implement_mz_coord {
         impl<T: $crate::CentroidLike> std::cmp::PartialOrd<T> for $t {
             #[inline]
             fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
-                self.mz.partial_cmp(&other.coordinate())
+                Some(self.mz.total_cmp(&other.coordinate()).then_with(|| self.intensity.total_cmp(&other.intensity())))
             }
         }
 
@@ -97,7 +97,7 @@ macro_rules! implement_mass_coord {
             #[inline]
             fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
                 match self.neutral_mass.total_cmp(&other.coordinate()) {
-                    cmp::Ordering::Equal => self.charge.partial_cmp(&other.charge()),
+                    std::cmp::Ordering::Equal => Some(self.charge.cmp(&other.charge()).then_with(|| self.intensity().total_cmp(&other.intensity()))),
                     x => Some(x)
                 }
             }

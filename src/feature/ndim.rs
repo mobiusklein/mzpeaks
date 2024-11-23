@@ -11,7 +11,7 @@ use super::traits::{CoArrayOps, FeatureLikeNDLike, FeatureLikeNDLikeMut};
 use super::util::NonNan;
 use super::{TimeArray, TimeInterval};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NDFeature<T, Y> {
     dimensions: Vec<Vec<f64>>,
@@ -19,6 +19,12 @@ pub struct NDFeature<T, Y> {
     intensity: Vec<f32>,
     _t: PhantomData<T>,
     _y: PhantomData<Y>,
+}
+
+impl<T, Y> Default for NDFeature<T, Y> {
+    fn default() -> Self {
+        Self::new(Vec::new(), Vec::new(), Vec::new())
+    }
 }
 
 impl<T, Y> NDFeature<T, Y> {
@@ -44,6 +50,11 @@ impl<T, Y> NDFeature<T, Y> {
     pub unsafe fn push_raw_unchecked(&mut self, point: NDPoint<T, Y>) {
         self.time.push(point.time);
         self.intensity.push(point.intensity);
+        if self.dimensions.is_empty() {
+            for _ in 0..point.dimensions.len() {
+                self.dimensions.push(Vec::with_capacity(2));
+            }
+        }
         for (d, p) in self.dimensions.iter_mut().zip(point.dimensions.into_iter()) {
             d.push(p)
         }
@@ -512,6 +523,24 @@ impl<'a, T, Y> FeatureLikeNDLikeMut<'a, T, Y> for NDFeature<T, Y> where NDFeatur
     }
 }
 
+impl<T, Y> FromIterator<NDPoint<T, Y>> for NDFeature<T, Y> {
+    fn from_iter<I: IntoIterator<Item = NDPoint<T, Y>>>(iter: I) -> Self {
+        let mut this = Self::default();
+        for pt in iter {
+            this.push_raw(pt);
+        }
+        this
+    }
+}
+
+impl<T, Y> Extend<NDPoint<T, Y>> for NDFeature<T, Y> {
+    fn extend<I: IntoIterator<Item = NDPoint<T, Y>>>(&mut self, iter: I) {
+        for pt in iter {
+            self.push_raw(pt);
+        }
+    }
+}
+
 pub struct NDIterMut<'a, T, Y> {
     dims_iter: Vec<slice::IterMut<'a, f64>>,
     time_iter: slice::Iter<'a, f64>,
@@ -582,5 +611,20 @@ mod test {
         assert_eq!(pt.time(), 12.6);
         assert_eq!(pt.mz(), 50.0);
         assert_eq!(pt.ion_mobility(), 0.5);
+    }
+
+    #[test]
+    fn test_create_feature() {
+        let points = vec![
+            NDPoint::<(MZ, IonMobility), Time>::new(vec![50.0, 0.5], 12.6, 1000.0),
+            NDPoint::<(MZ, IonMobility), Time>::new(vec![50.01, 0.49], 12.7, 1200.0),
+            NDPoint::<(MZ, IonMobility), Time>::new(vec![50.0, 0.51], 12.9, 800.0),
+        ];
+
+        let f: NDFeature<_, _> = points.into_iter().collect();
+        assert_eq!(f.len(), 3);
+        assert!((f.ion_mobility() - 0.498666).abs() < 1e-3, "ion_mobility was {}", f.ion_mobility());
+        assert!((f.mz() - 50.004).abs() < 1e-3, "mz was {}", f.mz());
+        assert!((f.apex_time().unwrap() - 12.7).abs() < 1e-3, "apex_time was {}", f.apex_time().unwrap());
     }
 }

@@ -4,7 +4,6 @@
 //! All peak-like types implement [`PartialEq`], [`PartialOrd`], and [`CoordinateLike`]
 //!
 
-use std::cmp;
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -400,8 +399,35 @@ mod test {
         assert_eq!(y.coordinate(), x.coordinate());
         assert_eq!(y.intensity(), x.intensity());
         // MZPoint doesn't use index
-        let z: CentroidPeak = y.clone().into();
+        let mut z: CentroidPeak = y.clone().into();
         assert_eq!(z, y);
+        *z.intensity_mut() += 500.0;
+        assert!(x < z);
+        assert!(z > x);
+        assert!(x == x);
+        assert!(z != x);
+
+        let xr = CentroidRef::new(&x, 0);
+        let zr = CentroidRef::new(&z, 0);
+        assert!(xr < zr);
+        assert!(zr > xr);
+        assert!(xr == xr);
+        assert!(zr != xr);
+    }
+
+    #[test]
+    fn test_to_string() {
+        let x = CentroidPeak::new(204.07, 5000f32, 19);
+        assert!(x.to_string().starts_with("CentroidPeak"));
+
+        let x = DeconvolutedPeak {
+            neutral_mass: 799.359964027,
+            charge: 2,
+            intensity: 5000f32,
+            index: 1,
+        };
+
+        assert!(x.to_string().starts_with("DeconvolutedPeak"));
     }
 
     #[test]
@@ -417,6 +443,20 @@ mod test {
         assert_eq!(Mass::coordinate(&x), 799.359964027);
         assert!((x.mz() - 400.68725848027003).abs() < 1e-6);
         assert!((MZ::coordinate(&x) - 400.68725848027003).abs() < 1e-6);
+
+        let mut y = x.as_centroid();
+        *(&mut y).intensity_mut() += 500.0;
+        assert!(x < y);
+        assert!(y > x);
+        assert!(x == x);
+        assert!(y != x);
+
+        let xr = DeconvolutedCentroidRef::new(&x, 0);
+        let yr = DeconvolutedCentroidRef::new(&y, 0);
+        assert!(xr < yr);
+        assert!(yr > xr);
+        assert!(xr == xr);
+        assert!(yr != xr);
     }
 
     #[cfg(feature = "serde")]

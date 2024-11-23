@@ -23,7 +23,8 @@ use serde::{Deserialize, Serialize};
 use crate::mass_error::Tolerance;
 
 use crate::coordinate::{
-    CoordinateLike, IndexType, IndexedCoordinate, Mass, SimpleInterval, Span1D, MZ,
+    CoordinateLike, IndexType, IndexedCoordinate,
+    Mass, SimpleInterval, Span1D, MZ,
 };
 use crate::peak::{CentroidPeak, DeconvolutedPeak, IntensityMeasurement};
 
@@ -190,7 +191,15 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
 
     /// Find the peak for `query` that satisfies `error_tolerance` with the
     /// maximum intensity, starting from index `i`.
-    fn most_intense_peak_for(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> where T: IntensityMeasurement {
+    fn most_intense_peak_for(
+        &self,
+        query: f64,
+        error_tolerance: Tolerance,
+        i: usize,
+    ) -> Option<usize>
+    where
+        T: IntensityMeasurement,
+    {
         if i >= self.len() {
             return None;
         }
@@ -203,10 +212,8 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
         while j > 0 && j < n {
             let p = self.get_item(j);
             let y = p.intensity();
-            let err = error_tolerance
-                .call(p.coordinate(), query)
-                .abs();
-            if y < best_int && err < tol {
+            let err = error_tolerance.call(p.coordinate(), query).abs();
+            if y > best_int && err < tol {
                 best_int = y;
                 best = j;
             } else if err > tol {
@@ -219,9 +226,7 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
         while j < n {
             let p = self.get_item(j);
             let y = p.intensity();
-            let err = error_tolerance
-                .call(p.coordinate(), query)
-                .abs();
+            let err = error_tolerance.call(p.coordinate(), query).abs();
             if y > best_int && err < tol {
                 best_int = y;
                 best = j;
@@ -236,11 +241,17 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
         Some(best)
     }
 
-    fn total_ion_current(&self) -> f32 where T: IntensityMeasurement + 'static {
+    fn total_ion_current(&self) -> f32
+    where
+        T: IntensityMeasurement + 'static,
+    {
         self.iter().map(|p| p.intensity()).sum()
     }
 
-    fn base_peak(&'_ self) -> Option<&'_ T> where T: IntensityMeasurement + 'static {
+    fn base_peak(&'_ self) -> Option<&'_ T>
+    where
+        T: IntensityMeasurement + 'static,
+    {
         self.iter().reduce(|peak, next| {
             if peak.intensity() >= next.intensity() {
                 peak
@@ -478,9 +489,7 @@ impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
 
     fn update_bounds(&mut self) {
         let q = unsafe { self.queries.get_unchecked(self.query_i).coordinate() };
-        (self.query_lower_bound, self.query_upper_bound) = self
-            .error_tolerance
-            .bounds(q);
+        (self.query_lower_bound, self.query_upper_bound) = self.error_tolerance.bounds(q);
     }
 
     fn finalize_query(&mut self) -> bool {
@@ -1107,7 +1116,7 @@ impl<'a, P: IndexedCoordinate<C>, C> TryFrom<&'a PeakSetVec<P, C>> for PeakSetVi
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{peak::MZPoint, test_data};
+    use crate::{peak::{CentroidRef, MZPoint}, test_data, CentroidLike};
 
     #[test]
     fn test_sequence_behavior() {
@@ -1159,6 +1168,80 @@ mod test {
 
         let block = peaks.between(1313.0, 1316.0, "10.0ppm".parse().unwrap());
         assert_eq!(block.len(), 3);
+    }
+
+    #[test]
+    fn test_summary_operations() {
+        let peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
+        let tic = peaks.total_ion_current();
+        let ref_tic: f32 = peaks.iter().map(|p| p.intensity).sum();
+
+        let tic_err = (tic - ref_tic).abs();
+        assert!(tic_err < 1e-3, "Expected {ref_tic}, got {tic}, error = {tic_err}");
+
+        let peak = peaks.base_peak().unwrap();
+        let ref_peak = &peaks[272];
+
+        let bp_mz_err = (peak.mz - ref_peak.mz).abs();
+        assert!(bp_mz_err < 1e-3, "Expected {}, got {}, error = {}", peak.mz, ref_peak.mz, bp_mz_err);
+        let bp_intensity_err = (peak.intensity - ref_peak.intensity).abs();
+        assert!(bp_intensity_err < 1e-3, "Expected {}, got {}, error = {}", peak.intensity, ref_peak.intensity, bp_intensity_err);
+    }
+
+    #[test]
+    fn test_iter_extension() {
+        let queries = vec![
+            MZPoint::new(262.2675, 1000.0),
+            MZPoint::new(566.3623, 1210.0),
+            MZPoint::new(645.1916, 20.0),
+        ];
+
+        let peaks: PeakSetVec<_, _> = queries.into_iter().map(|p| p.as_centroid()).collect();
+
+        let mut peaks2: PeakSet = PeakSetVec::empty();
+        peaks2.extend(peaks.clone());
+
+        assert_eq!(peaks, peaks2);
+
+        let mut peaks3: PeakSet = PeakSetVec::empty();
+        peaks3.extend(peaks.clone().into_iter().rev());
+
+        assert_eq!(peaks, peaks3);
+
+        let peaks4 = PeakSet::from_iter(peaks.iter().cloned(), true);
+        assert_eq!(peaks, peaks4);
+
+        let peaks5 = PeakSet::from_iter(peaks.iter().cloned(), false);
+        assert_eq!(peaks, peaks5);
+    }
+
+    #[test]
+    fn test_search() {
+        let peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
+        let i = peaks.search(1165.60669, Tolerance::Da(0.1)).unwrap();
+        let j = peaks.most_intense_peak_for(1165.60669, Tolerance::Da(1.2), i).unwrap();
+        assert_eq!(i - 1, j);
+
+        let j = peaks._search_earliest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        assert_eq!(i - 1, j);
+
+        let j = peaks._search_latest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        assert_eq!(i + 1, j);
+    }
+
+    #[test]
+    fn test_peak_refs() {
+        let peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
+        let view: PeakSetVec<_, MZ> = peaks.get_slice(200..485).iter().map(|p| CentroidRef::new(p, 0)).collect();
+        let i = view.search(1165.60669, Tolerance::Da(0.1)).unwrap();
+        let j = view.most_intense_peak_for(1165.60669, Tolerance::Da(1.2), i).unwrap();
+        assert_eq!(i - 1, j);
+
+        let j = view._search_earliest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        assert_eq!(i - 1, j);
+
+        let j = view._search_latest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        assert_eq!(i + 1, j);
     }
 
     #[test]
