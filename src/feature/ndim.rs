@@ -220,7 +220,7 @@ impl<T, Y> PartialOrd for NDFeature<T, Y> {
 impl_dim_feat!(NDFeature, MZ, 0);
 impl_dim_feat!(NDFeature, Mass, 0);
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NDPoint<T, Y> {
     pub dimensions: Vec<f64>,
@@ -391,7 +391,19 @@ pub struct NDPointMutRef<'a, T, Y> {
 
 impl<'a, T, Y> NDPointMutRef<'a, T, Y> {
     pub fn new(dimensions: Vec<&'a mut f64>, time: f64, intensity: &'a mut f32) -> Self {
-        Self { dimensions, time, intensity, _t: PhantomData, _y: PhantomData }
+        Self {
+            dimensions,
+            time,
+            intensity,
+            _t: PhantomData,
+            _y: PhantomData,
+        }
+    }
+}
+
+impl<'a, T, Y> From<NDPointMutRef<'a, T, Y>> for NDPoint<T, Y> {
+    fn from(value: NDPointMutRef<'a, T, Y>) -> Self {
+        Self::new(value.dimensions.into_iter().map(|d| *d).collect(), value.time, *value.intensity)
     }
 }
 
@@ -500,12 +512,18 @@ impl<'a, T, Y> IntensityMeasurementMut for NDPointMutRef<'a, T, Y> {
     }
 }
 
-
-impl<'a, T, Y> FeatureLikeNDLikeMut<'a, T, Y> for NDFeature<T, Y> where NDFeature<T, Y>: 'a  {
+impl<'a, T, Y> FeatureLikeNDLikeMut<'a, T, Y> for NDFeature<T, Y>
+where
+    NDFeature<T, Y>: 'a,
+{
     type PointMutRef = NDPointMutRef<'a, T, Y>;
 
     fn iter_mut(&'a mut self) -> impl Iterator<Item = Self::PointMutRef> {
-        NDIterMut::new(self.dimensions.iter_mut().map(|d| d.iter_mut()).collect(), self.time.iter(), self.intensity.iter_mut())
+        NDIterMut::new(
+            self.dimensions.iter_mut().map(|d| d.iter_mut()).collect(),
+            self.time.iter(),
+            self.intensity.iter_mut(),
+        )
     }
 
     fn push<X: Into<Self::Point>>(&mut self, pt: X, time: f64) {
@@ -515,7 +533,7 @@ impl<'a, T, Y> FeatureLikeNDLikeMut<'a, T, Y> for NDFeature<T, Y> where NDFeatur
     }
 
     fn push_raw(&mut self, point: Self::Point) {
-        let needs_sort = !self.is_empty() &&point.time < self.time.last().copied().unwrap();
+        let needs_sort = !self.is_empty() && point.time < self.time.last().copied().unwrap();
         unsafe { self.push_raw_unchecked(point) };
         if needs_sort {
             self.sort_by_time();
@@ -595,7 +613,6 @@ impl<'a, T, Y> Iterator for NDIterMut<'a, T, Y> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use crate::{
@@ -615,16 +632,24 @@ mod test {
 
     #[test]
     fn test_create_feature() {
-        let points = vec![
-            NDPoint::<(MZ, IonMobility), Time>::new(vec![50.0, 0.5], 12.6, 1000.0),
-            NDPoint::<(MZ, IonMobility), Time>::new(vec![50.01, 0.49], 12.7, 1200.0),
-            NDPoint::<(MZ, IonMobility), Time>::new(vec![50.0, 0.51], 12.9, 800.0),
+        let points: Vec<NDPoint<(MZ, IonMobility), Time>> = vec![
+            NDPoint::new(vec![50.0, 0.5], 12.6, 1000.0),
+            NDPoint::new(vec![50.01, 0.49], 12.7, 1200.0),
+            NDPoint::new(vec![50.0, 0.51], 12.9, 800.0),
         ];
 
         let f: NDFeature<_, _> = points.into_iter().collect();
         assert_eq!(f.len(), 3);
-        assert!((f.ion_mobility() - 0.498666).abs() < 1e-3, "ion_mobility was {}", f.ion_mobility());
+        assert!(
+            (f.ion_mobility() - 0.498666).abs() < 1e-3,
+            "ion_mobility was {}",
+            f.ion_mobility()
+        );
         assert!((f.mz() - 50.004).abs() < 1e-3, "mz was {}", f.mz());
-        assert!((f.apex_time().unwrap() - 12.7).abs() < 1e-3, "apex_time was {}", f.apex_time().unwrap());
+        assert!(
+            (f.apex_time().unwrap() - 12.7).abs() < 1e-3,
+            "apex_time was {}",
+            f.apex_time().unwrap()
+        );
     }
 }
