@@ -1225,7 +1225,8 @@ mod test {
         ];
 
         let indices = peaks.search_sorted_all_indices(&queries, Tolerance::PPM(20.0));
-        let it = SearchSortedIter::new(&peaks, &queries, Tolerance::PPM(20.0));
+
+        let it = peaks.search_sorted_all_indices_iter(&queries, Tolerance::PPM(20.0));
         let iter_indices: Vec<_> = it.collect();
 
         assert_eq!(indices, iter_indices);
