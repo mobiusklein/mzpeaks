@@ -30,7 +30,6 @@ pub mod feature;
 pub mod feature_map;
 pub mod mass_error;
 pub mod peak;
-pub mod peak_index;
 pub mod peak_set;
 pub mod prelude;
 #[cfg(test)]
