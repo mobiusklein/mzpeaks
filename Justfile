@@ -3,6 +3,9 @@ t:
 
 alias test := t
 
+test-coverage:
+    cargo llvm-cov --lib --tests --html
+
 doc:
     cargo doc --lib --no-deps
 

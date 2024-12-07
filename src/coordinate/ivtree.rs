@@ -28,25 +28,6 @@ fn intervals_containing_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borrow
     result
 }
 
-#[allow(unused)]
-fn intervals_overlapping<
-    V,
-    T: Span1D<DimType = V>,
-    D: Span1D<DimType = V>,
-    Q: Borrow<D>,
-    P: Borrow<T>,
->(
-    intervals: &[P],
-    value: Q,
-) -> Vec<&T> {
-    let mut result = Vec::new();
-    for i in intervals.iter() {
-        if i.borrow().overlaps(value.borrow()) {
-            result.push(i.borrow());
-        }
-    }
-    result
-}
 
 /// A node in [`IntervalTree`] over `T`
 #[derive(Debug, Clone, Default)]
@@ -60,6 +41,27 @@ pub struct IntervalTreeNode<V: Real + Sum + HasProximity, T: Span1D<DimType = V>
     pub parent: Option<usize>,
     pub left_child: Option<usize>,
     pub right_child: Option<usize>,
+}
+
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntoIterator for IntervalTreeNode<V, T> {
+    type Item = T;
+
+    type IntoIter = std::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.members.into_iter()
+    }
+}
+
+
+impl<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntoIterator for &'a IntervalTreeNode<V, T> {
+    type Item = &'a T;
+
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.members.iter()
+    }
 }
 
 impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Span1D for IntervalTreeNode<V, T> {
@@ -111,6 +113,10 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTreeNode<V, T
         }
         inst
     }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.members.iter()
+    }
 }
 
 enum BuildeTreeSide {
@@ -132,6 +138,10 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> FromIterator<T> for I
 }
 
 impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTree<V, T> {
+    pub fn empty() -> Self {
+        Self::new(vec![])
+    }
+
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
@@ -793,6 +803,48 @@ mod test {
     }
 
     #[test]
+    fn test_interval_tree_incr() {
+        let ivs = vec![
+            SimpleInterval::new(0.0, 3.0),
+            SimpleInterval::new(2.0, 5.0),
+            SimpleInterval::new(5.0, 10.0),
+            SimpleInterval::new(0.5, 3.0),
+            SimpleInterval::new(3.0, 5.0),
+            SimpleInterval::new(5.0, 12.0),
+            SimpleInterval::new(5.0, 6.0),
+            SimpleInterval::new(7.0, 10.0),
+            SimpleInterval::new(7.0, 12.0),
+        ];
+
+        let mut tree = IntervalTree::empty();
+
+        for iv in ivs.iter().copied() {
+            tree.insert(iv);
+        }
+
+                assert_eq!(tree.iter().flatten().count(), ivs.len());
+
+        let spanning = tree.contains_point(1.0);
+        assert_eq!(spanning.len(), 2);
+
+        let spanning = tree.contains_point(7.0);
+        assert_eq!(spanning.len(), 4);
+
+        let ivs2: Vec<&SimpleInterval<f64>> = ivs.iter().collect();
+        let tree = IntervalTree::new(ivs2);
+        let spanning = tree.contains_point(1.0);
+        assert_eq!(spanning.len(), 2);
+
+        let spanning = tree.contains_point(7.0);
+        assert_eq!(spanning.len(), 4);
+
+        let query_iv = SimpleInterval::new(2.0, 5.0);
+        let items = tree.overlaps(&query_iv);
+        let items_iterd: Vec<_> = tree.overlaps_iter(&query_iv).collect();
+        assert_eq!(items, items_iterd);
+    }
+
+    #[test]
     fn test_interval_tree() {
         let ivs = vec![
             SimpleInterval::new(0.0, 3.0),
@@ -805,10 +857,13 @@ mod test {
             SimpleInterval::new(7.0, 10.0),
             SimpleInterval::new(7.0, 12.0),
         ];
-        let tree = IntervalTree::new(ivs.clone());
+        let tree = IntervalTree::from_iter(ivs.clone());
         for (i, node) in tree.iter().enumerate() {
             eprintln!("Node {i}: {node:?}");
         }
+
+        assert_eq!(tree.iter().flatten().count(), ivs.len());
+
         let spanning = tree.contains_point(1.0);
         assert_eq!(spanning.len(), 2);
 

@@ -287,3 +287,62 @@ impl<C> From<CoordinateRange<C>> for Range<f64> {
         start..end
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::Time;
+
+    use super::*;
+
+    #[test]
+    fn test_conversion() {
+        let time_range: CoordinateRange<Time> = (..5.0).into();
+        assert_eq!(time_range.start(), None);
+        assert_eq!(time_range.end(), Some(5.0));
+
+        let time_range: CoordinateRange<Time> = (5.0..10.0).into();
+        assert_eq!(time_range.start(), Some(5.0));
+        assert_eq!(time_range.end(), Some(10.0));
+
+        let time_range: CoordinateRange<Time> = ":5.0".parse().unwrap();
+        assert_eq!(time_range.start(), None);
+        assert_eq!(time_range.end(), Some(5.0));
+
+        let time_range: CoordinateRange<Time> = "-5.0".parse().unwrap();
+        assert_eq!(time_range.start(), None);
+        assert_eq!(time_range.end(), Some(5.0));
+
+        let time_range: CoordinateRange<Time> = " 5.0".parse().unwrap();
+        assert_eq!(time_range.start(), None);
+        assert_eq!(time_range.end(), Some(5.0));
+
+        // let time_range: CoordinateRange<Time> = "5.0".parse().unwrap();
+        // assert_eq!(time_range.start(), None);
+        // assert_eq!(time_range.end(), Some(5.0));
+
+        let time_range: CoordinateRange<Time> = (0.0, 5.0).into();
+        assert_eq!(time_range.start(), Some(0.0));
+        assert_eq!(time_range.end(), Some(5.0));
+
+        let time_range: SimpleInterval<f64> = (0.0, 5.0).into();
+        assert_eq!(time_range.start(), 0.0);
+        assert_eq!(time_range.end(), 5.0);
+
+        let time_range: SimpleInterval<f64> = (5.0..10.0).into();
+        assert_eq!(time_range.start(), 5.0);
+        assert_eq!(time_range.end(), 10.0);
+    }
+
+    #[test]
+    fn test_interval() {
+        let time_range: CoordinateRange<Time> = (..5.0).into();
+        assert!(time_range.contains_raw(&2.5));
+        assert!(!time_range.contains_raw(&7.5));
+
+        let time_range2: CoordinateRange<Time> = (3.0..10.0).into();
+        assert!(time_range.overlaps(&time_range2));
+
+        assert!((5.0..7.0).is_contained_in_interval(&(3.0..10.0)));
+        assert!((3.0..10.0).contains_interval(&(5.0..7.0)));
+    }
+}

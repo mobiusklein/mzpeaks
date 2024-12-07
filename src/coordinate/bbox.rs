@@ -5,7 +5,10 @@ use std::{collections::VecDeque, iter::FusedIterator, marker::PhantomData, ops::
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::{range::{CoordinateRange, SimpleInterval, Span1D}, HasProximity};
+use super::{
+    range::{CoordinateRange, SimpleInterval, Span1D},
+    HasProximity,
+};
 
 /** An inclusive interval over two dimensions
 */
@@ -16,16 +19,19 @@ pub trait Span2D {
     fn start(&self) -> (Self::DimType1, Self::DimType2);
     fn end(&self) -> (Self::DimType1, Self::DimType2);
 
-    fn is_close(&self, other: impl Span2D<DimType1 = Self::DimType1, DimType2 = Self::DimType2>) -> bool {
+    fn is_close(
+        &self,
+        other: impl Span2D<DimType1 = Self::DimType1, DimType2 = Self::DimType2>,
+    ) -> bool {
         let s1 = self.start();
         let s2 = other.start();
         if !(s1.0.is_close(&s2.0) && s1.1.is_close(&s2.1)) {
-            return false
+            return false;
         }
         let s1 = self.end();
         let s2 = other.end();
         if !(s1.0.is_close(&s2.0) && s1.1.is_close(&s2.1)) {
-            return false
+            return false;
         }
         true
     }
@@ -52,7 +58,8 @@ pub trait Span2D {
         &self,
         interval: &T,
     ) -> bool {
-        (self.end() >= interval.start() && interval.end() >= self.start()) || self.is_close(interval)
+        (self.end() >= interval.start() && interval.end() >= self.start())
+            || self.is_close(interval)
     }
 }
 
@@ -172,11 +179,8 @@ impl<X, Y> CoordinateBox<X, Y> {
 
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct QuadTreeNode<
-    V1: HasProximity,
-    V2: HasProximity,
-    T: Span2D<DimType1 = V1, DimType2 = V2>,
-> {
+pub struct QuadTreeNode<V1: HasProximity, V2: HasProximity, T: Span2D<DimType1 = V1, DimType2 = V2>>
+{
     pub start: (V1, V2),
     pub end: (V1, V2),
     pub center: (V1, V2),
@@ -187,23 +191,45 @@ pub struct QuadTreeNode<
     _t: PhantomData<T>,
 }
 
-impl<
-        V1: HasProximity + Num,
-        V2: HasProximity + Num,
-        T: Span2D<DimType1 = V1, DimType2 = V2>,
-    > From<BoundingBox<V1, V2>> for QuadTreeNode<V1, V2, T>
+impl<V1: HasProximity, V2: HasProximity, T: Span2D<DimType1 = V1, DimType2 = V2>> IntoIterator
+    for QuadTreeNode<V1, V2, T>
+{
+    type Item = T;
+
+    type IntoIter = std::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.members.into_iter()
+    }
+}
+
+impl<'a, V1: HasProximity, V2: HasProximity, T: Span2D<DimType1 = V1, DimType2 = V2>> IntoIterator
+    for &'a QuadTreeNode<V1, V2, T>
+{
+    type Item = &'a T;
+
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.members.iter()
+    }
+}
+
+impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, DimType2 = V2>>
+    From<BoundingBox<V1, V2>> for QuadTreeNode<V1, V2, T>
 {
     fn from(value: BoundingBox<V1, V2>) -> Self {
         Self::empty(value)
     }
 }
 
-impl<
-        V1: HasProximity + Num,
-        V2: HasProximity + Num,
-        T: Span2D<DimType1 = V1, DimType2 = V2>,
-    > QuadTreeNode<V1, V2, T>
+impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, DimType2 = V2>>
+    QuadTreeNode<V1, V2, T>
 {
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.members.iter()
+    }
+
     pub fn empty(bbox: BoundingBox<V1, V2>) -> Self {
         Self {
             start: bbox.start(),
@@ -323,7 +349,9 @@ pub struct QuadTree<
     pub nodes: Vec<QuadTreeNode<V1, V2, T>>,
 }
 
-impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, DimType2 = V2>> FromIterator<T> for QuadTree<V1, V2, T> {
+impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, DimType2 = V2>>
+    FromIterator<T> for QuadTree<V1, V2, T>
+{
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let items = iter.into_iter().collect();
         Self::build(items)
@@ -337,6 +365,11 @@ impl<
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > QuadTree<V1, V2, T>
 {
+
+    pub fn empty() -> Self {
+        Self::new(Vec::new())
+    }
+
     pub fn build(members: Vec<T>) -> Self {
         if members.is_empty() {
             Self::new(Vec::new())
@@ -418,12 +451,15 @@ impl<
             return;
         }
 
-        let deepest_node = self
+        let deepest_node = match self
             .nodes_overlaps(&item)
             .into_iter()
             .map(|(i, node)| i)
             .max()
-            .unwrap();
+        {
+            Some(i) => i,
+            None => 0,
+        };
 
         let (needs_splitting, mut children_idxes) = {
             let node = self.nodes.get_mut(deepest_node).unwrap();
@@ -511,18 +547,27 @@ impl<
 
         while let Some((i, node)) = queue.pop_front() {
             if node.contains_interval(item) {
-                queue.extend(node.children.into_iter().flatten().filter_map(|i| {
-                    self.nodes.get(i).map(|node| (i, node))
-                }));
+                queue.extend(
+                    node.children
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|i| self.nodes.get(i).map(|node| (i, node))),
+                );
                 nodes.push((i, node));
             }
         }
 
         nodes
     }
+
+    pub fn as_bounding_box(&self) -> BoundingBox<V1, V2> {
+        if self.is_empty() {
+            BoundingBox::new((V1::zero(), V2::zero()), (V1::zero(), V2::zero()))
+        } else {
+            self.root().as_bounding_box()
+        }
+    }
 }
-
-
 
 #[derive(Debug)]
 pub struct QueryIter<
@@ -597,7 +642,8 @@ impl<
                 .members
                 .iter()
                 .enumerate()
-                .skip(self.i).find(|(_, v)| self.predicate.item_predicate(v, &self.query))
+                .skip(self.i)
+                .find(|(_, v)| self.predicate.item_predicate(v, &self.query))
             {
                 self.i = i + 1;
                 Some(v)
@@ -810,8 +856,51 @@ mod test {
         assert_eq!(y.end(), (14.0, 6.0));
 
         let z = x.combine(&y);
+        let q = y.combine(&x);
+        assert_eq!(z, q);
+        assert!(z.overlaps(&q));
 
         assert_eq!(z.start(), (5.0, 3.0));
         assert_eq!(z.end(), (14.0, 6.0));
+
+        assert!(z.overlaps(&x));
+        let (a, b) = &x.end();
+        assert!(z.contains((a, b)));
+        let (a, b) = &x.centroid();
+        assert!(z.contains((a, b)));
+        assert!(z.contains_interval(&x));
+    }
+
+    #[test]
+    fn test_quad() {
+        let x = BoundingBox::new((5.0, 3.0), (10.0, 6.0));
+        let y = BoundingBox::new((7.0, 3.0), (14.0, 6.0));
+        let z = x.combine(&y);
+
+        let node: QuadTreeNode<f64, f64, BoundingBox<f64, f64>> = QuadTreeNode::from(z);
+
+        assert_eq!(node.as_bounding_box(), z);
+    }
+
+    #[test]
+    fn test_tree() {
+        let x = BoundingBox::new((5.0, 3.0), (10.0, 6.0));
+        let y = BoundingBox::new((7.0, 3.0), (14.0, 6.0));
+        let z = BoundingBox::new((7.0, 4.0), (12.0, 5.0));
+        let q = BoundingBox::new((3.0, 2.0), (8.0, 5.0));
+
+        let mut tree = QuadTree::from_iter([x, y, z, q]);
+        let bb = tree.as_bounding_box();
+
+        let e = BoundingBox::new((8.0, 3.0), (10.0, 7.0));
+        tree.insert(e);
+        let bb2 = tree.as_bounding_box();
+        assert_ne!(bb, bb2);
+
+        let (a, b) = &(6.0, 4.0);
+        let items = tree.contains_point((a, b));
+        assert_eq!(items.len(), 2);
+
+        assert_eq!(tree.iter().flatten().count(), 5);
     }
 }
