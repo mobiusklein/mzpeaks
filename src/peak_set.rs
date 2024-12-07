@@ -13,7 +13,7 @@
 //! and [`PeakCollection::between`].
 //!
 use std::fmt::{self, Display};
-use std::iter::{Extend, FromIterator, FusedIterator};
+use std::iter::{Extend, FromIterator};
 use std::marker::{self, PhantomData};
 use std::ops::{self, Range};
 
@@ -22,10 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::mass_error::Tolerance;
 
-use crate::coordinate::{
-    CoordinateLike, IndexType, IndexedCoordinate,
-    Mass, SimpleInterval, Span1D, MZ,
-};
+use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
 use crate::peak::{CentroidPeak, DeconvolutedPeak, IntensityMeasurement};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,10 +75,12 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
     fn _earliest_peak(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
         let (start_bound, end_bound) = error_tolerance.bounds(query);
         let mut j = i;
-        while j <= 0 {
+        loop {
             let c = self.get_item(j).coordinate();
             if c < start_bound {
                 j += 1;
+                break;
+            } else if j == 0 {
                 break;
             } else {
                 j = j.saturating_sub(1);
@@ -98,10 +97,16 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
     /// Implementation details of [`PeakCollection::_search_latest`]
     fn _latest_peak(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
         let n = self.len();
-        if i >= n {
-            return None;
-        }
         let (start_bound, end_bound) = error_tolerance.bounds(query);
+        if i >= n {
+            return if n == 0 {
+                None
+            } else if self.get_item(n.saturating_sub(1)).coordinate() <= end_bound {
+                Some(n.saturating_sub(1))
+            } else {
+                None
+            };
+        }
         let mut j = i;
         while j < n {
             let c = self.get_item(j).coordinate();
@@ -325,20 +330,6 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
         subset
     }
 
-    /// Return an iterator over all peaks between `low` and `high` coordinates within
-    /// `error_tolerance`.
-    fn between_iter(
-        &self,
-        low: f64,
-        high: f64,
-        error_tolerance: Tolerance,
-    ) -> BetweenIter<'_, C, T, Self>
-    where
-        Self: Sized,
-    {
-        BetweenIter::new(self, low, high, error_tolerance)
-    }
-
     #[inline]
     /// Find all peaks which could match `query` within `error_tolerance` units
     fn all_peaks_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
@@ -534,98 +525,6 @@ impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
             self.query_hit_range.next().map(|i| (self.query_i, i))
         } else {
             pair
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct BetweenIter<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>> {
-    peaks: &'a P,
-    query_interval: SimpleInterval<f64>,
-    index_iter: <Range<usize> as IntoIterator>::IntoIter,
-    _c: PhantomData<C>,
-    _t: PhantomData<T>,
-}
-
-impl<'a, C, T: CoordinateLike<C> + 'a, P: PeakCollection<T, C>> Iterator
-    for BetweenIter<'a, C, T, P>
-{
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.find_next_peak()
-    }
-}
-
-impl<'a, C, T: CoordinateLike<C> + 'a, P: PeakCollection<T, C>> FusedIterator
-    for BetweenIter<'a, C, T, P>
-{
-}
-
-impl<'a, C, T: CoordinateLike<C> + 'a, P: PeakCollection<T, C>> ExactSizeIterator
-    for BetweenIter<'a, C, T, P>
-{
-    fn len(&self) -> usize {
-        self.index_iter.len()
-    }
-}
-
-impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>> BetweenIter<'a, C, T, P> {
-    fn query_range_as_interval(
-        query_start: f64,
-        query_end: f64,
-        tolerance: Tolerance,
-    ) -> SimpleInterval<f64> {
-        SimpleInterval::new(
-            tolerance.bounds(query_start).0,
-            tolerance.bounds(query_end).1,
-        )
-    }
-
-    pub fn new(peaks: &'a P, query_start: f64, query_end: f64, tolerance: Tolerance) -> Self {
-        let i = peaks
-            ._search_earliest(query_start, tolerance)
-            .unwrap_or_default();
-        let n = peaks.len();
-        let n = (peaks
-            ._search_latest(query_end, tolerance)
-            .unwrap_or_default()
-            + 1)
-        .min(n);
-        let index_iter = (i..n).into_iter();
-        let query_interval = Self::query_range_as_interval(query_start, query_end, tolerance);
-        Self {
-            peaks,
-            query_interval,
-            index_iter,
-            _c: PhantomData,
-            _t: PhantomData,
-        }
-    }
-
-    fn check_next_peak(&mut self) -> (Option<usize>, bool) {
-        if let Some(i) = self.index_iter.next() {
-            let p = unsafe { self.peaks.get_item_unchecked(i) };
-            let c = p.coordinate();
-            if self.query_interval.contains(&c) {
-                (Some(i), false)
-            } else {
-                (None, false)
-            }
-        } else {
-            (None, true)
-        }
-    }
-
-    fn find_next_peak(&mut self) -> Option<&'a T> {
-        loop {
-            let (i, done) = self.check_next_peak();
-            if let Some(i) = i {
-                return Some(unsafe { self.peaks.get_item_unchecked(i) });
-            }
-            if done {
-                return None;
-            }
         }
     }
 }
@@ -827,7 +726,10 @@ impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetVec<P, C> {
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a P> where P: 'a {
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a P>
+    where
+        P: 'a,
+    {
         self.iter()
     }
 }
@@ -971,7 +873,7 @@ pub type MassPeakSetType<D> = PeakSetVec<D, Mass>;
 /// A borrowed view of a peak list that assumes that it is sorted by its coordinate
 /// dimension ahead of time. Unlike [`PeakSetVec`], this collection does not attempt
 /// to sort or re-index the peaks it contains.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PeakSetView<'a, P: IndexedCoordinate<C>, C> {
     peaks: &'a [P],
     _c: PhantomData<C>,
@@ -994,6 +896,10 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakSetView<'a, P, C> {
 
     pub fn last(&self) -> Option<&P> {
         self.peaks.last()
+    }
+
+    pub fn as_slice(&self) -> &[P] {
+        self.peaks
     }
 
     fn is_sorted(peaks: &[P]) -> bool {
@@ -1051,7 +957,10 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P,
             .binary_search_by(|peak| peak.coordinate().partial_cmp(&query).unwrap())
     }
 
-    fn iter<'b>(&'b self) -> impl Iterator<Item = &'b P> where P: 'b {
+    fn iter<'b>(&'b self) -> impl Iterator<Item = &'b P>
+    where
+        P: 'b,
+    {
         self.iter()
     }
 }
@@ -1115,8 +1024,13 @@ impl<'a, P: IndexedCoordinate<C>, C> TryFrom<&'a PeakSetVec<P, C>> for PeakSetVi
 
 #[cfg(test)]
 mod test {
+    use std::io;
+
     use super::*;
-    use crate::{peak::{CentroidRef, MZPoint}, test_data, CentroidLike};
+    use crate::{
+        peak::{CentroidRef, MZPoint},
+        test_data, CentroidLike,
+    };
 
     #[test]
     fn test_sequence_behavior() {
@@ -1177,15 +1091,30 @@ mod test {
         let ref_tic: f32 = peaks.iter().map(|p| p.intensity).sum();
 
         let tic_err = (tic - ref_tic).abs();
-        assert!(tic_err < 1e-3, "Expected {ref_tic}, got {tic}, error = {tic_err}");
+        assert!(
+            tic_err < 1e-3,
+            "Expected {ref_tic}, got {tic}, error = {tic_err}"
+        );
 
         let peak = peaks.base_peak().unwrap();
         let ref_peak = &peaks[272];
 
         let bp_mz_err = (peak.mz - ref_peak.mz).abs();
-        assert!(bp_mz_err < 1e-3, "Expected {}, got {}, error = {}", peak.mz, ref_peak.mz, bp_mz_err);
+        assert!(
+            bp_mz_err < 1e-3,
+            "Expected {}, got {}, error = {}",
+            peak.mz,
+            ref_peak.mz,
+            bp_mz_err
+        );
         let bp_intensity_err = (peak.intensity - ref_peak.intensity).abs();
-        assert!(bp_intensity_err < 1e-3, "Expected {}, got {}, error = {}", peak.intensity, ref_peak.intensity, bp_intensity_err);
+        assert!(
+            bp_intensity_err < 1e-3,
+            "Expected {}, got {}, error = {}",
+            peak.intensity,
+            ref_peak.intensity,
+            bp_intensity_err
+        );
     }
 
     #[test]
@@ -1219,25 +1148,39 @@ mod test {
     fn test_search() {
         let peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
         let i = peaks.search(1165.60669, Tolerance::Da(0.1)).unwrap();
-        let j = peaks.most_intense_peak_for(1165.60669, Tolerance::Da(1.2), i).unwrap();
+        let j = peaks
+            .most_intense_peak_for(1165.60669, Tolerance::Da(1.2), i)
+            .unwrap();
         assert_eq!(i - 1, j);
 
-        let j = peaks._search_earliest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        let j = peaks
+            ._search_earliest(1165.60669, Tolerance::Da(1.2))
+            .unwrap();
         assert_eq!(i - 1, j);
 
-        let j = peaks._search_latest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        let j = peaks
+            ._search_latest(1165.60669, Tolerance::Da(1.2))
+            .unwrap();
         assert_eq!(i + 1, j);
     }
 
     #[test]
     fn test_peak_refs() {
         let peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
-        let view: PeakSetVec<_, MZ> = peaks.get_slice(200..485).iter().map(|p| CentroidRef::new(p, 0)).collect();
+        let view: PeakSetVec<_, MZ> = peaks
+            .get_slice(200..485)
+            .iter()
+            .map(|p| CentroidRef::new(p, 0))
+            .collect();
         let i = view.search(1165.60669, Tolerance::Da(0.1)).unwrap();
-        let j = view.most_intense_peak_for(1165.60669, Tolerance::Da(1.2), i).unwrap();
+        let j = view
+            .most_intense_peak_for(1165.60669, Tolerance::Da(1.2), i)
+            .unwrap();
         assert_eq!(i - 1, j);
 
-        let j = view._search_earliest(1165.60669, Tolerance::Da(1.2)).unwrap();
+        let j = view
+            ._search_earliest(1165.60669, Tolerance::Da(1.2))
+            .unwrap();
         assert_eq!(i - 1, j);
 
         let j = view._search_latest(1165.60669, Tolerance::Da(1.2)).unwrap();
@@ -1286,6 +1229,51 @@ mod test {
         let iter_indices: Vec<_> = it.collect();
 
         assert_eq!(indices, iter_indices);
+        Ok(())
+    }
+
+    #[test]
+    fn test_view() -> io::Result<()> {
+        let peaks = test_data::read_peaks_from_file("./test/data/test.txt")?;
+        let view = PeakSetView::try_from(peaks.as_slice()).unwrap();
+        let view2 = PeakSetView::try_from(&peaks).unwrap();
+
+        assert_eq!(view.as_slice(), peaks.as_slice());
+        assert_eq!(view2, view);
+
+        assert!(!view.is_empty());
+
+        view.iter().zip(peaks.iter()).for_each(|(a, b)| {
+            assert_eq!(a, b);
+        });
+
+        for p in view {
+            if p.index == 0 {
+                assert_eq!(view2.first().unwrap(), p);
+            }
+            if p.index == (view2.len() - 1) as u32 {
+                assert_eq!(view2.last().unwrap(), p);
+            }
+        }
+
+        for p in &view2 {
+            if p.index == 0 {
+                assert_eq!(view2.first().unwrap(), p);
+            }
+            if p.index == (view2.len() - 1) as u32 {
+                assert_eq!(view2.last().unwrap(), p);
+            }
+        }
+
+        for p in view2.iter() {
+            if p.index == 0 {
+                assert_eq!(view2.first().unwrap(), p);
+            }
+            if p.index == (view2.len() - 1) as u32 {
+                assert_eq!(view2.last().unwrap(), p);
+            }
+        }
+
         Ok(())
     }
 
