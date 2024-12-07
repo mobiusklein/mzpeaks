@@ -22,10 +22,8 @@ pub use charged::{
 pub use feature::{
     Feature, FeatureView, IMSFeature, IntoIter, Iter, IterMut, LCMSFeature, MZPeakIter,
 };
+pub use ndim::{NDFeature, NDIter, NDIterMut, NDPoint, NDPointMutRef};
 pub use simple::{SimpleFeature, SimpleFeatureView};
-pub use ndim::{
-    NDFeature, NDIter, NDPoint, NDIterMut, NDPointMutRef
-};
 
 #[cfg(test)]
 mod test {
@@ -42,7 +40,6 @@ mod test {
             (CentroidPeak::new(204.07, 7251.9, 0), 0.2),
             (CentroidPeak::new(204.08, 5261.7, 0), 0.3),
         ];
-
 
         let (idx, _) = LCMSFeature::empty().find_time(128.470);
         assert_eq!(idx, None);
@@ -91,8 +88,6 @@ mod test {
         }
         assert_eq!(y.apex_time(), Some(0.2));
         assert_eq!(y.as_view().to_owned(), y);
-
-
     }
 
     #[test]
@@ -164,7 +159,12 @@ mod test {
         Feature::from_iter(points.iter().copied())
     }
 
-    fn behaviors_to_test_mut<'a, F: FeatureLike<MZ, Time> + FeatureLikeMut<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>>(feature: &'a mut F) {
+    fn behaviors_to_test_mut<
+        'a,
+        F: FeatureLike<MZ, Time> + FeatureLikeMut<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>,
+    >(
+        feature: &'a mut F,
+    ) {
         let y = feature.intensity();
         feature.iter_mut().for_each(|(_, _, z)| {
             *z *= 2.0;
@@ -173,13 +173,21 @@ mod test {
         assert_eq!(y * 2.0, y2);
     }
 
-    fn behaviors_to_test<'a, F: FeatureLike<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>>(feature: &'a F) {
+    fn behaviors_to_test<'a, F: FeatureLike<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>>(
+        feature: &'a F,
+    ) {
         let err = feature.mz() - 1075.229;
         assert!(err.abs() < 1e-3, "Error = {err}");
 
         let (idx, err) = feature.find_time(128.470);
 
         assert_eq!(idx, Some(9));
+        assert!(feature.spans(128.47));
+
+        assert_eq!(
+            feature.as_range(),
+            crate::coordinate::CoordinateRange::new(feature.start_time(), feature.end_time())
+        );
 
         let e = 128.4700598232 - 128.470;
         assert!((e - err).abs() < 1e-3);
@@ -207,6 +215,23 @@ mod test {
 
         let part = feature.slice(2..);
         assert_eq!(part.end_time(), feature.last().map(|(_, b, _)| b));
+
+        let mask: Vec<_> = feature.iter_time().map(|t| t >= 128.4700598232).collect();
+        let parts = feature.split_mask(&mask);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].end_time(), feature.end_time());
+
+        let parts = feature.split_when(|(_, y, _), _| y <= 128.4700598232);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].end_time(), feature.end_time());
+
+        let (part_a, part_b) = feature.split_at_time(128.4700598232);
+        assert_eq!(part_b.end_time(), feature.end_time());
+        assert_eq!(part_a.start_time(), feature.start_time());
+
+        let (part_a, part_b) = feature.split_at(9);
+        assert_eq!(part_b.end_time(), feature.end_time());
+        assert_eq!(part_a.start_time(), feature.start_time());
     }
 
     #[test]
