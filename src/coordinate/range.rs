@@ -8,9 +8,12 @@ use std::{
 };
 
 use super::{CoordinateLike, HasProximity};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// An interval within a single dimension
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CoordinateRange<C> {
     pub start: Option<f64>,
     pub end: Option<f64>,
@@ -134,6 +137,7 @@ impl<T: HasProximity> Span1D for Range<T> {
 
 /// A basic [`Span1D`] implementation
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SimpleInterval<V: PartialOrd> {
     pub start: V,
     pub end: V,

@@ -2,6 +2,9 @@
 use num_traits::Num;
 use std::{collections::VecDeque, iter::FusedIterator, marker::PhantomData, ops::Sub};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use super::{range::{CoordinateRange, SimpleInterval, Span1D}, HasProximity};
 
 /** An inclusive interval over two dimensions
@@ -69,6 +72,7 @@ impl<T: Span2D> Span2D for &T {
 
 /// A basic [`Span2D`] implementation
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BoundingBox<V1: HasProximity, V2: HasProximity> {
     pub start: (V1, V2),
     pub end: (V1, V2),
@@ -140,6 +144,7 @@ impl<V1: HasProximity, V2: HasProximity> BoundingBox<V1, V2> {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CoordinateBox<X, Y> {
     dim1: CoordinateRange<X>,
     dim2: CoordinateRange<Y>,
@@ -166,6 +171,7 @@ impl<X, Y> CoordinateBox<X, Y> {
 }
 
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct QuadTreeNode<
     V1: HasProximity,
     V2: HasProximity,

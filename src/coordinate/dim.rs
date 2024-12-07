@@ -2,8 +2,13 @@ use std::fmt::Display;
 
 use num_traits::{Float, FromPrimitive};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+
 /// An enum over the different coordinate planes
 #[derive(Debug, PartialEq, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Dimension {
     MZ(MZ),
     Mass(Mass),
@@ -31,6 +36,7 @@ impl Display for Dimension {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// The Mass To Charge Ratio (m/z) coordinate system
 pub struct MZ();
 
@@ -43,6 +49,7 @@ impl MZ {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// The Mass coordinate system
 pub struct Mass();
 
@@ -55,6 +62,7 @@ impl Mass {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// The Event Time coordinate system
 pub struct Time();
 impl Time {
@@ -66,6 +74,7 @@ impl Time {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// The Ion Mobility Time coordinate system
 pub struct IonMobility();
 impl IonMobility {
@@ -77,6 +86,7 @@ impl IonMobility {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dimensionless();
 
 #[allow(unused)]
@@ -103,6 +113,14 @@ pub trait CoordinateSystem: Sized {
 
     fn name() -> &'static str {
         Self::dimension().name()
+    }
+
+    fn minimum_value() -> f64 {
+        0.0
+    }
+
+    fn maximum_value() -> f64 {
+        f64::INFINITY
     }
 }
 

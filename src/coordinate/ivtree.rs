@@ -9,6 +9,9 @@ use std::{
 
 use num_traits::real::Real;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use super::{HasProximity, SimpleInterval, Span1D};
 
 #[allow(unused)]
@@ -47,6 +50,7 @@ fn intervals_overlapping<
 
 /// A node in [`IntervalTree`] over `T`
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IntervalTreeNode<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> {
     pub start: V,
     pub end: V,
@@ -116,6 +120,7 @@ enum BuildeTreeSide {
 
 /// An interval tree over `T`
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IntervalTree<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> {
     pub nodes: Vec<IntervalTreeNode<V, T>>,
 }
