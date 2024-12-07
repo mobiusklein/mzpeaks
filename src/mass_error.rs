@@ -151,3 +151,71 @@ impl From<f64> for Tolerance {
         Self::PPM(value)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse() -> Result<(), ToleranceParsingError> {
+        let mut tol: Tolerance = "10ppm".parse()?;
+        assert_eq!(Tolerance::PPM(10.0), tol);
+
+        assert_eq!(tol.to_string(), "10PPM");
+
+        tol = "0.02Da".parse()?;
+        assert_eq!(Tolerance::Da(0.02), tol);
+
+        assert_eq!(tol.to_string(), "0.02Da");
+
+        if let Err(e) = "0.02 da".parse::<Tolerance>() {
+            match e {
+                ToleranceParsingError::InvalidMagnitude => {},
+                _ => panic!("Wrong error: {e}"),
+            }
+        }
+        if let Err(e) = "1".parse::<Tolerance>() {
+            match e {
+                ToleranceParsingError::InvalidMagnitude => {},
+                _ => panic!("Wrong error: {e}"),
+            }
+        }
+        if let Err(e) = "0.02".parse::<Tolerance>() {
+            match e {
+                ToleranceParsingError::UnknownUnit => {},
+                _ => panic!("Wrong error: {e}"),
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_range() {
+        let iv = Tolerance::Da(0.2).as_interval(50.0);
+        assert_eq!(iv.start, 49.8);
+        assert_eq!(iv.end, 50.2);
+
+        let iv = (Tolerance::Da(0.2) * 10.0).as_interval(50.0);
+        assert_eq!(iv.start, 48.0);
+        assert_eq!(iv.end, 52.0);
+
+        let iv = Tolerance::PPM(1.0).as_range(1e6);
+        assert_eq!(*iv.start(), 1e6 - 1.0);
+        assert_eq!(*iv.end(), 1e6 + 1.0);
+
+        let iv = (Tolerance::PPM(1.0) * 10.0).as_range(1e6);
+        assert_eq!(*iv.start(), 1e6 - 10.0);
+        assert_eq!(*iv.end(), 1e6 + 10.0);
+    }
+
+    #[test]
+    fn test_test() {
+        assert!(Tolerance::PPM(10.0).test(100.0, 100.0));
+        assert!(!Tolerance::PPM(10.0).test(100.0, 102.0));
+
+        assert_eq!(
+            Tolerance::PPM(10.0).format_error(100.0, 100.0),
+            "0PPM"
+        );
+    }
+}
