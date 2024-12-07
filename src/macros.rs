@@ -4,14 +4,6 @@
 #[macro_export]
 macro_rules! implement_mz_coord {
     ($t:ty) => {
-        impl std::hash::Hash for $t {
-            #[inline]
-            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                let mz_val: i64 = self.coordinate().round() as i64;
-                mz_val.hash(state);
-            }
-        }
-
         impl<T: $crate::CentroidLike> PartialEq<T> for $t {
             #[inline]
             fn eq(&self, other: &T) -> bool {
@@ -68,15 +60,6 @@ macro_rules! implement_mass_coord {
             #[inline]
             fn coordinate(&self) -> f64 {
                 self.neutral_mass
-            }
-        }
-
-        impl std::hash::Hash for $t {
-            #[inline]
-            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                let neutral_mass: i64 =
-                    $crate::CoordinateLike::<$crate::Mass>::coordinate(self).round() as i64;
-                neutral_mass.hash(state);
             }
         }
 
