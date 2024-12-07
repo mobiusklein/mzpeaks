@@ -43,6 +43,10 @@ mod test {
             (CentroidPeak::new(204.08, 5261.7, 0), 0.3),
         ];
 
+
+        let (idx, _) = LCMSFeature::empty().find_time(128.470);
+        assert_eq!(idx, None);
+
         x.extend(points.iter().cloned());
         assert_eq!(x.len(), 3);
 
@@ -76,6 +80,19 @@ mod test {
         let (b, a) = x.split_at_time(0.2);
         assert_eq!(b.len(), 1);
         assert_eq!(a.len(), 2);
+
+        let (x, y, z) = x.into_inner();
+        let x = LCMSFeature::new(x, y, z);
+
+        let mut y = LCMSFeature::with_capacity(3);
+
+        for (p, t) in x.iter_peaks().rev() {
+            y.push(&p, t);
+        }
+        assert_eq!(y.apex_time(), Some(0.2));
+        assert_eq!(y.as_view().to_owned(), y);
+
+
     }
 
     #[test]
@@ -147,9 +164,16 @@ mod test {
         Feature::from_iter(points.iter().copied())
     }
 
-    #[test]
-    fn test_behaviors() {
-        let feature = make_large_feature();
+    fn behaviors_to_test_mut<'a, F: FeatureLike<MZ, Time> + FeatureLikeMut<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>>(feature: &'a mut F) {
+        let y = feature.intensity();
+        feature.iter_mut().for_each(|(_, _, z)| {
+            *z *= 2.0;
+        });
+        let y2 = feature.intensity();
+        assert_eq!(y * 2.0, y2);
+    }
+
+    fn behaviors_to_test<'a, F: FeatureLike<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>>(feature: &'a F) {
         let err = feature.mz() - 1075.229;
         assert!(err.abs() < 1e-3, "Error = {err}");
 
@@ -166,7 +190,45 @@ mod test {
         let (idx, _) = feature.find_time(1000.0);
         assert_eq!(idx, Some(feature.len() - 1));
 
-        let (idx, _) = LCMSFeature::empty().find_time(128.470);
-        assert_eq!(idx, None);
+        let part = feature.slice(0..5);
+        assert_eq!(part.end_time(), feature.at(4).map(|(_, b, _)| b));
+        let part = feature.slice(..5);
+        assert_eq!(part.end_time(), feature.at(4).map(|(_, b, _)| b));
+
+        let part = feature.slice(..=5);
+        assert_eq!(part.end_time(), feature.at(5).map(|(_, b, _)| b));
+
+        let part = feature.slice(0..=5);
+        assert_eq!(part.end_time(), feature.at(5).map(|(_, b, _)| b));
+
+        let part = feature.slice(..);
+        assert_eq!(part.end_time(), feature.last().map(|(_, b, _)| b));
+        assert_eq!(part.start_time(), feature.first().map(|(_, b, _)| b));
+
+        let part = feature.slice(2..);
+        assert_eq!(part.end_time(), feature.last().map(|(_, b, _)| b));
+    }
+
+    #[test]
+    fn test_behaviors() {
+        let mut feature = make_large_feature();
+        behaviors_to_test(&feature);
+        behaviors_to_test(&feature.as_view());
+        behaviors_to_test_mut(&mut feature);
+
+        let mut feature = ChargedFeature::new(make_large_feature(), 2);
+        behaviors_to_test(&feature);
+        behaviors_to_test(&feature.as_view());
+        behaviors_to_test_mut(&mut feature);
+    }
+
+    #[test]
+    fn test_behaviors_simple() {
+        let feature = make_large_feature();
+        let x = feature.coordinate_x();
+        let (_, y, z) = feature.into_inner();
+        let feature: SimpleFeature<MZ, Time> = SimpleFeature::new(x, y, z);
+        behaviors_to_test(&feature);
+        behaviors_to_test(&feature.as_view());
     }
 }

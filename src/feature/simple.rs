@@ -497,16 +497,16 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
                 Self::ViewType::new(self.label, &self.y[*i..=*j], &self.z[*i..=*j])
             }
             (Bound::Included(i), Bound::Excluded(j)) => {
-                Self::ViewType::new(self.label, &self.y[*i..=*j], &self.z[*i..=*j])
+                Self::ViewType::new(self.label, &self.y[*i..*j], &self.z[*i..*j])
             }
             (Bound::Included(i), Bound::Unbounded) => {
                 Self::ViewType::new(self.label, &self.y[*i..], &self.z[*i..])
             }
             (Bound::Excluded(i), Bound::Included(j)) => {
-                Self::ViewType::new(self.label, &self.y[*i..*j], &self.z[*i..*j])
+                Self::ViewType::new(self.label, &self.y[*i..=*j], &self.z[*i..=*j])
             }
             (Bound::Excluded(i), Bound::Excluded(j)) => {
-                Self::ViewType::new(self.label, &self.y[*i..=*j], &self.z[*i..=*j])
+                Self::ViewType::new(self.label, &self.y[*i..*j], &self.z[*i..*j])
             }
             (Bound::Excluded(i), Bound::Unbounded) => {
                 Self::ViewType::new(self.label, &self.y[*i..], &self.z[*i..])
