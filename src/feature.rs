@@ -28,7 +28,7 @@ pub use simple::{SimpleFeature, SimpleFeatureView};
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::prelude::*;
+    use crate::{prelude::*, Mass};
     use crate::{CentroidPeak, DeconvolutedPeak, MZLocated, Time, MZ};
 
     #[test]
@@ -88,6 +88,51 @@ mod test {
         }
         assert_eq!(y.apex_time(), Some(0.2));
         assert_eq!(y.as_view().to_owned(), y);
+    }
+
+    #[test]
+    fn test_empty_behavior() {
+        macro_rules! do_test {
+            ($x:expr) => {
+                assert!($x.apex_time().is_none());
+                assert!($x.is_empty());
+
+                let (a, b) = $x.split_at(5);
+                assert!(a.is_empty());
+                assert!(b.is_empty());
+
+                let (a, b) = $x.split_at_time(50.0);
+                assert!(a.is_empty());
+                assert!(b.is_empty());
+
+                assert_eq!($x.area(), 0.0);
+                assert_eq!($x.intensity(), 0.0);
+
+                assert_eq!($x.iter().len(), 0);
+
+                let mut i = 0;
+                for _ in $x {
+                    i += 1;
+                }
+                assert_eq!(i, 0);
+            };
+        }
+
+        let mut x = LCMSFeature::empty();
+        assert_eq!(x.iter_mut().len(), 0);
+        assert_eq!(x.iter_peaks().len(), 0);
+        do_test!(x);
+        let mut x: ChargedFeature<crate::Mass, Time> = ChargedFeature::empty(2);
+
+        assert_eq!(x.iter_mut().len(), 0);
+        assert_eq!(x.iter_peaks().len(), 0);
+        do_test!(x);
+
+        let x: FeatureView<'_, MZ, Time> = FeatureView::empty();
+        do_test!(x);
+
+        let x: ChargedFeatureView<'_, MZ, Time> = ChargedFeatureView::empty(2);
+        do_test!(x);
     }
 
     #[test]
@@ -171,9 +216,56 @@ mod test {
         });
         let y2 = feature.intensity();
         assert_eq!(y * 2.0, y2);
+        for i in 0..feature.len() {
+            let pt = feature.at_mut(i).unwrap();
+            *pt.2 /= 2.0;
+        }
+        let y3 = feature.intensity();
+        assert_eq!(y, y3);
+        let times: Vec<_> = feature.iter_time().collect();
+        for t in times.iter().copied() {
+            let pt = feature.at_time_mut(t).unwrap();
+            *pt.2 *= 2.0;
+        }
+        let y4 = feature.intensity();
+        assert_eq!(y * 2.0, y4);
+
+        let y5: f32 = times
+            .iter()
+            .copied()
+            .flat_map(|t| feature.at_time(t))
+            .map(|pt| pt.2)
+            .sum();
+        assert_eq!(y * 2.0, y5);
+
+        let y6: f32 = (0..feature.len())
+            .flat_map(|i| feature.at(i))
+            .map(|pt| pt.2)
+            .sum();
+        assert_eq!(y * 2.0, y6);
+
+        let n = feature.len();
+        let (a, b, c) = feature.last().unwrap();
+        feature.push_raw(a, b, c);
+        assert_eq!(
+            feature.len(),
+            n,
+            "Appending to the trailing time point should not add a new entry"
+        );
+
+        let (a, b, c) = feature.first().unwrap();
+        feature.push_raw(a, b, c);
+        assert_eq!(
+            feature.len(),
+            n + 1,
+            "Appending to the a new time point should add a new entry"
+        );
     }
 
-    fn behaviors_to_test<'a, F: FeatureLike<MZ, Time> + SplittableFeatureLike<'a, MZ, Time>>(
+    fn behaviors_to_test<
+        'a,
+        F: FeatureLike<MZ, Time> + SplittableFeatureLike<'a, MZ, Time> + TimeArray<Time>,
+    >(
         feature: &'a F,
     ) {
         let err = feature.mz() - 1075.229;
@@ -232,6 +324,9 @@ mod test {
         let (part_a, part_b) = feature.split_at(9);
         assert_eq!(part_b.end_time(), feature.end_time());
         assert_eq!(part_a.start_time(), feature.start_time());
+
+        assert_eq!(feature.time_view().len(), feature.len());
+        assert_eq!(feature.intensity_view().len(), feature.len());
     }
 
     #[test]
@@ -241,10 +336,31 @@ mod test {
         behaviors_to_test(&feature.as_view());
         behaviors_to_test_mut(&mut feature);
 
+        let (_pt, t) = feature.iter_peaks().nth(10).unwrap();
+        let e = 128.4700598232 - t;
+        assert!(e.abs() < 1e-3);
+        assert!(feature.iter_mut().next_back().is_some());
+        assert!(feature.iter_peaks().next_back().is_some());
+
         let mut feature = ChargedFeature::new(make_large_feature(), 2);
         behaviors_to_test(&feature);
         behaviors_to_test(&feature.as_view());
         behaviors_to_test_mut(&mut feature);
+        assert!(feature.iter_mut().next_back().is_some());
+        assert_eq!(feature.charge(), 2);
+        let mut feature2: ChargedFeature<Mass, Time> = ChargedFeature::empty(2);
+        feature2.extend(feature.into_iter());
+        let (_pt, t) = feature2.iter_peaks().nth(9).unwrap();
+        let e = 128.4700598232 - t;
+        assert!(e.abs() < 1e-3);
+        assert!(feature2.iter_mut().next_back().is_some());
+        assert!(feature2.iter_peaks().next_back().is_some());
+
+        assert_eq!(feature2.as_inner().1, feature2.charge());
+        assert_eq!(feature2.as_view(), feature2.as_view());
+        let (f, z) = feature2.clone().into_inner();
+        assert_eq!(z, 2);
+        assert_eq!(f, *feature2.as_ref())
     }
 
     #[test]
@@ -252,8 +368,24 @@ mod test {
         let feature = make_large_feature();
         let x = feature.coordinate_x();
         let (_, y, z) = feature.into_inner();
-        let feature: SimpleFeature<MZ, Time> = SimpleFeature::new(x, y, z);
+
+        let mut feature: SimpleFeature<MZ, Time> = SimpleFeature::new(x, y, z);
+        let f2 = feature.clone();
+        assert_eq!(feature, f2);
+        assert!(feature >= f2);
+        assert!(feature <= f2);
+
+        assert_eq!(feature.as_view(), f2.as_view());
+        assert!(feature.as_view() >= f2.as_view());
+        assert!(feature.as_view() <= f2.as_view());
+
         behaviors_to_test(&feature);
         behaviors_to_test(&feature.as_view());
+        behaviors_to_test_mut(&mut feature);
+
+        assert_eq!(feature.apex_time(), f2.as_view().apex_time());
+
+        let feature: SimpleFeature<MZ, Time> = f2.into_iter().collect();
+        behaviors_to_test(&feature);
     }
 }

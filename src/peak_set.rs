@@ -1082,6 +1082,14 @@ mod test {
 
         let block = peaks.between(1313.0, 1316.0, "10.0ppm".parse().unwrap());
         assert_eq!(block.len(), 3);
+
+        assert_eq!(peaks[..5].len(), 5);
+        assert_eq!(peaks[5..].len(), peaks.len() - 5);
+        assert_eq!(peaks[2..5].len(), 3);
+        assert_eq!(peaks[..].len(), peaks.len());
+
+        assert_eq!(peaks.first().map(|p| p.index), Some(0));
+        assert_eq!(peaks.last().map(|p| p.index), Some(peaks.len() as u32 - 1));
     }
 
     #[test]

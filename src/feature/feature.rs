@@ -42,13 +42,7 @@ impl<X, Y> Feature<X, Y> {
 
     /// Create an empty [`Feature`], ready to be extended.
     pub fn empty() -> Self {
-        Self {
-            x: Vec::new(),
-            y: Vec::new(),
-            z: Vec::new(),
-            _x: PhantomData,
-            _y: PhantomData,
-        }
+        Self::with_capacity(0)
     }
 
     /// Create an empty [`Feature`] with pre-allocated capacity.
@@ -918,5 +912,15 @@ impl<'a, X, Y> TimeArray<Y> for FeatureView<'a, X, Y> {
 
     fn intensity_view(&self) -> &[f32] {
         &self.z
+    }
+}
+
+impl<'a, X, Y> IntoIterator for FeatureView<'a, X, Y> {
+    type Item = (f64, f64, f32);
+
+    type IntoIter = Iter<'a, X, Y>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }

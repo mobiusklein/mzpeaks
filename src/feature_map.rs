@@ -5,13 +5,14 @@
 //!
 
 use crate::{feature::FeatureLike, CoordinateLike, Tolerance};
-use std::{marker::PhantomData, ops::{self, Range}};
-
+use std::{
+    marker::PhantomData,
+    ops::{self, Range},
+};
 
 /// A two dimensional feature collection where features are sorted by the `X` dimension
 /// and each feature is internally sorted by the `Y` dimension.
-pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output = T>
-{
+pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output = T> {
     fn search_by(&self, query: f64) -> Result<usize, usize>;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -21,6 +22,10 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
     /// Implement index access
     fn get_item(&self, i: usize) -> &T;
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
+    where
+        T: 'a;
 
     #[inline]
     fn _closest_feature(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
@@ -114,11 +119,11 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
         };
 
         if lower_index < n && self[lower_index].coordinate() < lower_bound {
-                lower_index += 1;
+            lower_index += 1;
         }
 
         if upper_index < n && upper_index > 0 && self[upper_index].coordinate() > upper_bound {
-                upper_index -= 1;
+            upper_index -= 1;
         }
 
         if upper_index < n {
@@ -150,7 +155,7 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
 
         let n = self.len();
         if n == 0 {
-            return 0..0
+            return 0..0;
         }
 
         let mut lower_index = match self.search_by(lower_bound) {
@@ -195,9 +200,7 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
 }
 
 /// A mutable kind of [`FeatureMapLike`] which new features can be added to.
-pub trait FeatureMapLikeMut<X, Y, T: FeatureLike<X, Y>> : FeatureMapLike<X, Y, T>
-{
-
+pub trait FeatureMapLikeMut<X, Y, T: FeatureLike<X, Y>>: FeatureMapLike<X, Y, T> {
     /// Add `feature` to the collection, maintaining sort order and feature
     /// indexing.
     fn push(&mut self, feature: T);
@@ -205,7 +208,6 @@ pub trait FeatureMapLikeMut<X, Y, T: FeatureLike<X, Y>> : FeatureMapLike<X, Y, T
     /// Sort the collection, updating the feature indexing.
     fn sort(&mut self);
 }
-
 
 /// Represents a sorted list of mass spectral features that is a concrete implementation
 /// of [`FeatureMapLike`] and [`FeatureMapLikeMut`]
@@ -226,11 +228,23 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         inst
     }
 
+    pub fn first(&self) -> Option<&T> {
+        self.features.first()
+    }
+
+    pub fn last(&self) -> Option<&T> {
+        self.features.last()
+    }
+
+    pub fn as_view(&self) -> FeatureMapView<'_, X, Y, T> {
+        FeatureMapView::new(&self.features)
+    }
+
     pub fn empty() -> Self {
         Self {
             features: Vec::new(),
             _x: PhantomData,
-            _y: PhantomData
+            _y: PhantomData,
         }
     }
 
@@ -275,7 +289,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         FeatureMap::wrap(subset)
     }
 
-    pub fn from_iter<I: Iterator<Item=T>>(iter: I, sort: bool) -> Self {
+    pub fn from_iter<I: Iterator<Item = T>>(iter: I, sort: bool) -> Self {
         let features = iter.collect();
         if sort {
             Self::new(features)
@@ -285,31 +299,27 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
     }
 
     pub fn earliest_time(&self) -> Option<f64> {
-        self.features.iter().fold(Option::<f64>::None, |prev, feat| {
-            match (prev, feat.start_time()) {
-                (Some(prev), Some(cur)) => {
-                    Some(prev.min(cur))
-                },
-                (None, Some(cur)) => {
-                    Some(cur)
-                },
-                (_, _) => prev
-            }
-        })
+        self.features
+            .iter()
+            .fold(Option::<f64>::None, |prev, feat| {
+                match (prev, feat.start_time()) {
+                    (Some(prev), Some(cur)) => Some(prev.min(cur)),
+                    (None, Some(cur)) => Some(cur),
+                    (_, _) => prev,
+                }
+            })
     }
 
     pub fn latest_time(&self) -> Option<f64> {
-        self.features.iter().fold(Option::<f64>::None, |prev, feat| {
-            match (prev, feat.start_time()) {
-                (Some(prev), Some(cur)) => {
-                    Some(prev.max(cur))
-                },
-                (None, Some(cur)) => {
-                    Some(cur)
-                },
-                (_, _) => prev
-            }
-        })
+        self.features
+            .iter()
+            .fold(Option::<f64>::None, |prev, feat| {
+                match (prev, feat.start_time()) {
+                    (Some(prev), Some(cur)) => Some(prev.max(cur)),
+                    (None, Some(cur)) => Some(cur),
+                    (_, _) => prev,
+                }
+            })
     }
 }
 
@@ -333,6 +343,13 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLike<X, Y, T> for FeatureMap<X, Y, T>
     fn get_slice(&self, i: ops::Range<usize>) -> &[T] {
         &self.features[i]
     }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
+    where
+        T: 'a,
+    {
+        self.iter()
+    }
 }
 
 impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLikeMut<X, Y, T> for FeatureMap<X, Y, T> {
@@ -340,7 +357,8 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLikeMut<X, Y, T> for FeatureMap<X, Y,
         if self.is_empty() {
             self.features.push(feature)
         } else {
-            let is_tail = self.features.last().as_ref().unwrap().coordinate() <= feature.coordinate();
+            let is_tail =
+                self.features.last().as_ref().unwrap().coordinate() <= feature.coordinate();
             self.features.push(feature);
             if !is_tail {
                 self.sort();
@@ -349,9 +367,7 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLikeMut<X, Y, T> for FeatureMap<X, Y,
     }
 
     fn sort(&mut self) {
-        self.features.sort_by(|x, y| {
-            x.partial_cmp(y).unwrap()
-        })
+        self.features.sort_by(|x, y| x.partial_cmp(y).unwrap())
     }
 }
 
@@ -419,7 +435,6 @@ impl<X, Y, T: FeatureLike<X, Y>> ops::IndexMut<usize> for FeatureMap<X, Y, T> {
 
 impl_slicing!(FeatureMap<X, Y, T>, X, Y, T: FeatureLike<X, Y>);
 
-
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FeatureMapView<'a, X, Y, T: FeatureLike<X, Y>> {
@@ -485,25 +500,25 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMapLike<X, Y, T> for FeatureMapView<
     fn get_slice(&self, i: ops::Range<usize>) -> &[T] {
         &self.features[i]
     }
+
+    fn iter<'b>(&'b self) -> impl Iterator<Item = &'b T>
+    where
+        T: 'b,
+    {
+        self.features.iter()
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::feature::LCMSFeature;
-    use crate::test_data;
     use crate::prelude::*;
+    use crate::test_data;
 
-    #[test]
-    fn test_sequence_behavior() {
-        let source_peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
-
-        let feature_map: FeatureMap<_, _, LCMSFeature> = source_peaks.iter().map(|p| {
-            let mut feature = LCMSFeature::empty();
-            feature.push(&p, 1.0);
-            feature
-        }).collect();
-
+    fn test_sequence_behavior_fn<T: FeatureMapLike<crate::MZ, crate::Time, LCMSFeature>>(
+        feature_map: &T,
+    ) {
         assert_eq!(feature_map.len(), 485);
         assert!((feature_map[0].mz() - 231.3888).abs() < 1e-3);
 
@@ -548,14 +563,49 @@ mod test {
 
         let block = feature_map.between(1313.0, 1316.0, "10.0ppm".parse().unwrap());
         assert_eq!(block.len(), 3);
+    }
 
+    #[test]
+    fn test_sequence_behavior() {
+        let source_peaks = test_data::read_peaks_from_file("./test/data/test.txt").unwrap();
+
+        let feature_map: FeatureMap<_, _, LCMSFeature> = source_peaks
+            .iter()
+            .map(|p| {
+                let mut feature = LCMSFeature::empty();
+                feature.push(&p, 1.0);
+                feature
+            })
+            .collect();
+
+        assert_eq!(feature_map[2..5].len(), 3);
+        assert_eq!(feature_map[..5].len(), 5);
+        assert_eq!(feature_map[5..].len(), feature_map.len() - 5);
+
+        test_sequence_behavior_fn(&feature_map);
+        test_sequence_behavior_fn(&feature_map.as_view());
+    }
+
+    #[test]
+    fn test_create_empty() {
+        let mut fm: FeatureMap<_, _, LCMSFeature> = FeatureMap::empty();
+
+        assert!(FeatureMapLike::is_empty(&fm));
+        assert!(fm.latest_time().is_none());
+
+        fm.push(LCMSFeature::from_iter([(500.0, 2., 1.0)]));
+        assert!(!fm.is_empty());
+        fm.push(LCMSFeature::from_iter([(499.0, 2., 1.0)]));
+
+        assert!(fm.last().unwrap().mz() > 499.0);
+
+        assert_eq!(fm.earliest_time(), Some(2.0));
+        assert_eq!(fm.latest_time(), Some(2.0));
     }
 
     #[test]
     fn test_edgecases() {
-        let features = FeatureMap::new(vec![
-            LCMSFeature::from_iter([(500.0, 2., 1.0)])
-        ]);
+        let features = FeatureMap::new(vec![LCMSFeature::from_iter([(500.0, 2., 1.0)])]);
 
         let p = features.has_feature(500.0, Tolerance::Da(1.0));
         assert!(p.is_some());
@@ -563,7 +613,7 @@ mod test {
         let p = features.all_features_for(500.0, Tolerance::Da(1.0));
         assert!(p.len() == 1);
 
-        let features: FeatureMap<_, _, LCMSFeature> = FeatureMap::new(vec![]);
+        let features: FeatureMap<_, _, LCMSFeature> = FeatureMap::empty();
 
         let p = features.has_feature(500.0, Tolerance::Da(1.0));
         assert!(p.is_none());

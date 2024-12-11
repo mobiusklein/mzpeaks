@@ -331,6 +331,17 @@ mod test {
         let time_range: SimpleInterval<f64> = (5.0..10.0).into();
         assert_eq!(time_range.start(), 5.0);
         assert_eq!(time_range.end(), 10.0);
+
+        let empty = CoordinateRange::<Time>::default();
+        assert_eq!(empty.start(), None);
+        assert_eq!(empty.end(), None);
+
+        assert_eq!(empty.start_bound(), Bound::Unbounded);
+        assert_eq!(empty.end_bound(), Bound::Unbounded);
+        let t: Range<f64> = empty.into();
+
+        assert_eq!(t.start, 0.0);
+        assert_eq!(t.end, f64::INFINITY);
     }
 
     #[test]

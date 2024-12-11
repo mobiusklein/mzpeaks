@@ -28,7 +28,6 @@ fn intervals_containing_point<V, Q: Borrow<V>, T: Span1D<DimType = V>, P: Borrow
     result
 }
 
-
 /// A node in [`IntervalTree`] over `T`
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -53,8 +52,9 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntoIterator for Inte
     }
 }
 
-
-impl<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntoIterator for &'a IntervalTreeNode<V, T> {
+impl<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntoIterator
+    for &'a IntervalTreeNode<V, T>
+{
     type Item = &'a T;
 
     type IntoIter = std::slice::Iter<'a, T>;
@@ -128,7 +128,15 @@ enum BuildeTreeSide {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IntervalTree<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> {
-    pub nodes: Vec<IntervalTreeNode<V, T>>,
+    pub(crate) nodes: Vec<IntervalTreeNode<V, T>>,
+}
+
+impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Extend<T> for IntervalTree<V, T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for item in iter {
+            self.insert(item);
+        }
+    }
 }
 
 impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> FromIterator<T> for IntervalTree<V, T> {
@@ -138,6 +146,10 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> FromIterator<T> for I
 }
 
 impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTree<V, T> {
+    pub fn nodes(&self) -> &[IntervalTreeNode<V, T>] {
+        &self.nodes
+    }
+
     pub fn empty() -> Self {
         Self::new(vec![])
     }
@@ -147,7 +159,7 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
     }
 
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
+        self.nodes.is_empty() || !self.nodes.iter().any(|n| !n.members.is_empty())
     }
 
     pub fn root(&self) -> &IntervalTreeNode<V, T> {
@@ -155,21 +167,18 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
     }
 
     pub fn insert(&mut self, interval: T) -> usize {
-        if self.is_empty() {
-            self.nodes.push(IntervalTreeNode::new(
-                (interval.start() + interval.end()) / V::from(2.0).unwrap(),
-                vec![interval],
-                0,
-                None,
-                None,
-                None,
-            ));
-            return 0;
-        }
         let mut index = 0;
         let insert_in: usize;
+
         loop {
             let node = &self.nodes[index];
+            let this_index = index;
+
+            /*
+            This node spans the beginning of the interval, meaning that both its left
+            and right children might also span the interval, so we may visit both of
+            them
+            */
             if node.contains(&interval.start()) {
                 let (left_index, left_spans) = match node.left_child {
                     Some(left_index) => {
@@ -205,6 +214,10 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
                     index = dest;
                 }
             }
+            /*
+            This node contains the end of the interval, which means its right child may be contain it,
+            but the left child would already have been covered by the above condition
+            */
             if node.contains(&interval.end()) {
                 let (right_index, right_spans) = match node.right_child {
                     Some(right_index) => {
@@ -224,6 +237,16 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
                 } else {
                     index = dest;
                 }
+            }
+
+            /*
+            If neither child contains the interval, then it must belong in the parent node. This means
+            the index won't have been updated by either of the earlier blocks, so we can exit the loop
+            and insert the interval here.
+            */
+            if index == this_index {
+                insert_in = index;
+                break;
             }
         }
 
@@ -524,7 +547,9 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
     }
 }
 
-impl<V: Real + Sum + Default + HasProximity, T: Span1D<DimType = V>> Default for IntervalTree<V, T> {
+impl<V: Real + Sum + Default + HasProximity, T: Span1D<DimType = V>> Default
+    for IntervalTree<V, T>
+{
     fn default() -> Self {
         let node = IntervalTreeNode::new(V::zero(), vec![], 0, None, None, None);
         Self { nodes: vec![node] }
@@ -535,11 +560,17 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>> Span1D for IntervalTr
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
-        self.nodes.first().map(|x| x.start()).unwrap_or_else(|| V::zero())
+        self.nodes
+            .first()
+            .map(|x| x.start())
+            .unwrap_or_else(|| V::zero())
     }
 
     fn end(&self) -> Self::DimType {
-        self.nodes.first().map(|x| x.end()).unwrap_or_else(|| V::zero())
+        self.nodes
+            .first()
+            .map(|x| x.end())
+            .unwrap_or_else(|| V::zero())
     }
 }
 
@@ -565,6 +596,10 @@ impl<'a, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> PreorderIter<'a, 
             VecDeque::from(vec![0])
         };
         Self { tree, stack }
+    }
+
+    pub fn next_index(&self) -> Option<usize> {
+        self.stack.back().copied()
     }
 
     fn next_node(&mut self) -> Option<&'a IntervalTreeNode<V, T>> {
@@ -653,7 +688,8 @@ impl<
                 .members
                 .iter()
                 .enumerate()
-                .skip(self.i).find(|(_, v)| self.predicate.item_predicate(v, &self.query))
+                .skip(self.i)
+                .find(|(_, v)| self.predicate.item_predicate(v, &self.query))
             {
                 self.i = i + 1;
                 Some(v)
@@ -720,7 +756,11 @@ pub trait NodeSelectorCriterion<
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OverlapPredicate<V: Real + Sum + HasProximity, T: Span1D<DimType = V>, Q: Span1D<DimType = V>> {
+pub struct OverlapPredicate<
+    V: Real + Sum + HasProximity,
+    T: Span1D<DimType = V>,
+    Q: Span1D<DimType = V>,
+> {
     _v: PhantomData<V>,
     _t: PhantomData<T>,
     _q: PhantomData<Q>,
@@ -779,6 +819,8 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>, Q: Span1D<DimType = V
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
+
     use super::*;
 
     #[test]
@@ -818,11 +860,12 @@ mod test {
 
         let mut tree = IntervalTree::empty();
 
+        // Pressure test the insert API
         for iv in ivs.iter().copied() {
             tree.insert(iv);
         }
 
-                assert_eq!(tree.iter().flatten().count(), ivs.len());
+        assert_eq!(tree.iter().flatten().count(), ivs.len());
 
         let spanning = tree.contains_point(1.0);
         assert_eq!(spanning.len(), 2);
@@ -830,18 +873,72 @@ mod test {
         let spanning = tree.contains_point(7.0);
         assert_eq!(spanning.len(), 4);
 
-        let ivs2: Vec<&SimpleInterval<f64>> = ivs.iter().collect();
-        let tree = IntervalTree::new(ivs2);
-        let spanning = tree.contains_point(1.0);
-        assert_eq!(spanning.len(), 2);
+        // Stress the trees more
+        let mut tree = IntervalTree::from_iter(ivs.clone());
+        for (i, mut iv) in ivs.iter().copied().enumerate() {
+            if i % 2 == 0 {
+                iv.start -= 2.0;
+                iv.end -= 2.0;
+            } else {
+                iv.start += 2.0;
+                iv.end += 2.0;
+            }
+            tree.insert(iv);
+        }
 
-        let spanning = tree.contains_point(7.0);
-        assert_eq!(spanning.len(), 4);
+        for (i, mut iv) in ivs.iter().copied().enumerate() {
+            if i % 2 == 0 {
+                iv.start -= 6.0;
+                iv.end -= 6.0;
+            } else {
+                iv.start += 6.0;
+                iv.end += 6.0;
+            }
+            tree.insert(iv);
+        }
 
-        let query_iv = SimpleInterval::new(2.0, 5.0);
-        let items = tree.overlaps(&query_iv);
-        let items_iterd: Vec<_> = tree.overlaps_iter(&query_iv).collect();
-        assert_eq!(items, items_iterd);
+        let mut seen = HashSet::new();
+        let mut iter = tree.iter();
+        while let Some(i) = iter.next_index() {
+            let node = iter.next().unwrap();
+            eprintln!(
+                "{i}|{}|{}\t{} -- {} -- {}",
+                node.parent.map(|s| s.to_string()).unwrap_or_default(),
+                node.members.len(),
+                node.start,
+                node.center,
+                node.end
+            );
+            if let Some(parent_id) = node.parent {
+                assert!(seen.contains(&parent_id))
+            }
+            seen.insert(i);
+        }
+
+        eprintln!("{}", "-".repeat(20));
+
+        // Rebalancing the tree should fix the depth
+        tree.balance();
+        let mut seen = HashSet::new();
+        let mut iter = tree.iter();
+        while let Some(i) = iter.next_index() {
+            let node = iter.next().unwrap();
+            eprintln!(
+                "{i}|{}|{}\t{} -- {} -- {}",
+                node.parent.map(|s| s.to_string()).unwrap_or_default(),
+                node.members.len(),
+                node.start,
+                node.center,
+                node.end
+            );
+            if let Some(parent_id) = node.parent {
+                assert!(seen.contains(&parent_id))
+            }
+            seen.insert(i);
+        }
+
+        assert_eq!(tree.start(), -6.0);
+        assert_eq!(tree.end(), 18.0);
     }
 
     #[test]
@@ -858,18 +955,22 @@ mod test {
             SimpleInterval::new(7.0, 12.0),
         ];
         let tree = IntervalTree::from_iter(ivs.clone());
-        for (i, node) in tree.iter().enumerate() {
+        for (i, node) in tree.nodes().iter().enumerate() {
             eprintln!("Node {i}: {node:?}");
         }
 
-        assert_eq!(tree.iter().flatten().count(), ivs.len());
+        assert_eq!(tree.flatten().len(), ivs.len(), "Flattening the tree didn't produce as many items as original collection");
 
+        // Expected to be spanned by two intervals
         let spanning = tree.contains_point(1.0);
         assert_eq!(spanning.len(), 2);
+        assert_eq!(tree.contains_iter(1.0).count(), 2);
 
+        // Expected to be spanned by four intervals
         let spanning = tree.contains_point(7.0);
         assert_eq!(spanning.len(), 4);
 
+        // Repeat the earlier tests with an interval-by-reference tree
         let ivs2: Vec<&SimpleInterval<f64>> = ivs.iter().collect();
         let tree = IntervalTree::new(ivs2);
         let spanning = tree.contains_point(1.0);

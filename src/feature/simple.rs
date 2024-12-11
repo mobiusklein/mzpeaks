@@ -9,9 +9,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{coordinate::CoordinateLike, IntensityMeasurement};
 
-use super::{traits::{CoArrayOps, FeatureLike, SplittableFeatureLike, TimeInterval}, TimeArray};
 use super::util::{NonNan, EMPTY_Y, EMPTY_Z};
-
+use super::{
+    traits::{CoArrayOps, FeatureLike, SplittableFeatureLike, TimeInterval},
+    FeatureLikeMut, TimeArray,
+};
 
 /// A feature-like type that doesn't have a variable first dimension, instead
 /// using a constant value
@@ -49,13 +51,7 @@ impl<X, Y> SimpleFeature<X, Y> {
 
     /// Create an empty [`SimpleFeature`]
     pub fn empty(label: f64) -> Self {
-        Self {
-            label,
-            y: Vec::new(),
-            z: Vec::new(),
-            _x: PhantomData,
-            _y: PhantomData,
-        }
+        Self::with_capacity(0, label)
     }
 
     /// Createa a new empty [`SimpleFeature`] with pre-allocated capacity
@@ -101,8 +97,12 @@ impl<X, Y> SimpleFeature<X, Y> {
     /// Push a new data point onto the feature and ensure the time ordering invariant is satisfied.
     pub fn push_raw(&mut self, _x: f64, y: f64, z: f32) {
         let needs_sort = self.len() > 0 && self.y.last().copied().unwrap() > y;
-        self.y.push(y);
-        self.z.push(z);
+        if !self.is_empty() && y == *self.y.last().unwrap() {
+            *self.z.last_mut().unwrap() += z;
+        } else {
+            self.y.push(y);
+            self.z.push(z);
+        }
         if needs_sort {
             self.sort_by_y();
         }
@@ -231,6 +231,44 @@ impl<X, Y> FeatureLike<X, Y> for SimpleFeature<X, Y> {
     }
 }
 
+pub struct IntoIter<X, Y> {
+    xval: f64,
+    yiter: std::vec::IntoIter<f64>,
+    ziter: std::vec::IntoIter<f32>,
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>,
+}
+
+impl<X, Y> Iterator for IntoIter<X, Y> {
+    type Item = (f64, f64, f32);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let y = self.yiter.next();
+        let z = self.ziter.next();
+        match (y, z) {
+            (Some(y), Some(z)) => Some((self.xval, y, z)),
+            _ => None,
+        }
+    }
+}
+
+impl<X, Y> IntoIterator for SimpleFeature<X, Y> {
+    type Item = (f64, f64, f32);
+
+    type IntoIter = IntoIter<X, Y>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let xval = self.coordinate();
+        IntoIter {
+            xval,
+            yiter: self.y.into_iter(),
+            ziter: self.z.into_iter(),
+            _x: PhantomData::<X>,
+            _y: PhantomData::<Y>,
+        }
+    }
+}
+
 impl<X, Y> Extend<(f64, f64, f32)> for SimpleFeature<X, Y> {
     fn extend<T: IntoIterator<Item = (f64, f64, f32)>>(&mut self, iter: T) {
         for (_x, y, z) in iter {
@@ -264,9 +302,7 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement> FromIterator<(P, f64)>
     }
 }
 
-impl<X, Y> FromIterator<(f64, f64, f32)>
-    for SimpleFeature<X, Y>
-{
+impl<X, Y> FromIterator<(f64, f64, f32)> for SimpleFeature<X, Y> {
     fn from_iter<T: IntoIterator<Item = (f64, f64, f32)>>(iter: T) -> Self {
         let mut it = iter.into_iter();
         if let Some((x, time, intensity)) = it.next() {
@@ -277,6 +313,50 @@ impl<X, Y> FromIterator<(f64, f64, f32)>
         } else {
             Self::empty(0.0)
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct IterMut<'a, X, Y> {
+    yiter: std::slice::IterMut<'a, f64>,
+    ziter: std::slice::IterMut<'a, f32>,
+    value: f64,
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>,
+}
+
+impl<'a, X, Y> Iterator for IterMut<'a, X, Y> {
+    type Item = (&'a mut f64, &'a mut f64, &'a mut f32);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let x = std::ptr::addr_of_mut!(self.value);
+        let y = self.yiter.next();
+        let z = self.ziter.next();
+
+        match (y, z) {
+            (Some(y), Some(z)) => Some((unsafe { &mut *x }, y, z)),
+            _ => None,
+        }
+    }
+}
+
+impl<X, Y> FeatureLikeMut<X, Y> for SimpleFeature<X, Y> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
+        IterMut {
+            yiter: self.y.iter_mut(),
+            ziter: self.z.iter_mut(),
+            value: self.label,
+            _x: PhantomData::<X>,
+            _y: PhantomData::<Y>,
+        }
+    }
+
+    fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
+        self.push(pt, time);
+    }
+
+    fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        self.push_raw(x, y, z);
     }
 }
 
@@ -517,9 +597,7 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
             (Bound::Unbounded, Bound::Excluded(j)) => {
                 Self::ViewType::new(self.label, &self.y[..*j], &self.z[..*j])
             }
-            (Bound::Unbounded, Bound::Unbounded) => {
-                Self::ViewType::new(self.label, self.y, self.z)
-            }
+            (Bound::Unbounded, Bound::Unbounded) => Self::ViewType::new(self.label, self.y, self.z),
         }
     }
 

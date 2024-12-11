@@ -115,10 +115,7 @@ impl<X, Y> ChargedFeature<X, Y> {
     }
 
     pub fn empty(charge: i32) -> Self {
-        Self {
-            feature: Feature::empty(),
-            charge,
-        }
+        Self::with_capacity(0, charge)
     }
 
     pub fn iter(&self) -> Iter<'_, X, Y> {
@@ -307,6 +304,16 @@ impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
     }
 }
 
+impl<X, Y> IntoIterator for ChargedFeature<X, Y> {
+    type Item = <Feature<X, Y> as IntoIterator>::Item;
+
+    type IntoIter = <Feature<X, Y> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.feature.into_iter()
+    }
+}
+
 /// A non-owning version of [`ChargedFeature`]
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -478,5 +485,15 @@ impl<'a, X, Y> TimeArray<Y> for ChargedFeatureView<'a, X, Y> {
 
     fn intensity_view(&self) -> &[f32] {
         self.feature.intensity_view()
+    }
+}
+
+impl<'a, X, Y> IntoIterator for ChargedFeatureView<'a, X, Y> {
+    type Item = (f64, f64, f32);
+
+    type IntoIter = Iter<'a, X, Y>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }

@@ -630,15 +630,7 @@ mod test {
         assert_eq!(pt.ion_mobility(), 0.5);
     }
 
-    #[test]
-    fn test_create_feature() {
-        let points: Vec<NDPoint<(MZ, IonMobility), Time>> = vec![
-            NDPoint::new(vec![50.0, 0.5], 12.6, 1000.0),
-            NDPoint::new(vec![50.01, 0.49], 12.7, 1200.0),
-            NDPoint::new(vec![50.0, 0.51], 12.9, 800.0),
-        ];
-
-        let f: NDFeature<_, _> = points.into_iter().collect();
+    fn test_creation_behavior(f: &NDFeature<(MZ, IonMobility), Time>) {
         assert_eq!(f.len(), 3);
         assert!(
             (f.ion_mobility() - 0.498666).abs() < 1e-3,
@@ -651,5 +643,47 @@ mod test {
             "apex_time was {}",
             f.apex_time().unwrap()
         );
+
+        assert_eq!(f.start_time(), Some(12.6));
+        assert_eq!(f.end_time(), Some(12.9));
+        assert_eq!(f.time_view().len(), 3);
+
+        assert_eq!(f.iter().count(), 3);
+        assert_eq!(f.intensity_view().iter().sum::<f32>(), f.intensity());
+    }
+
+    #[test]
+    fn test_create_feature() {
+        let points: Vec<NDPoint<(MZ, IonMobility), Time>> = vec![
+            NDPoint::new(vec![50.0, 0.5], 12.6, 1000.0),
+            NDPoint::new(vec![50.01, 0.49], 12.7, 1200.0),
+            NDPoint::new(vec![50.0, 0.51], 12.9, 800.0),
+        ];
+
+        let f: NDFeature<_, _> = points.clone().into_iter().collect();
+        test_creation_behavior(&f);
+
+        let mut f2 = NDFeature::default();
+        for pt in points.clone() {
+            f2.push_raw(pt);
+        }
+        test_creation_behavior(&f2);
+        assert_eq!(f, f2);
+
+        assert!(f <= f2);
+        assert!(f >= f2);
+
+        for (x, y) in f.iter().zip(f2.iter()) {
+            assert_eq!(x, y);
+            assert!(x <= y);
+            assert!(x >= y);
+        }
+
+        f2 = NDFeature::default();
+        for pt in points.clone().into_iter().rev() {
+            f2.push_raw(pt);
+        }
+        test_creation_behavior(&f2);
+        assert_eq!(f, f2);
     }
 }

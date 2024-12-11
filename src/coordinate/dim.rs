@@ -17,6 +17,18 @@ pub enum Dimension {
     Dimensionless(Dimensionless),
 }
 
+macro_rules! dim_dispatch {
+    ($d:ident, $f:tt) => {
+        match $d {
+            Dimension::MZ(_) => <MZ as CoordinateSystem>::$f(),
+            Dimension::Mass(_) => <Mass as CoordinateSystem>::$f(),
+            Dimension::Time(_) => <Time as CoordinateSystem>::$f(),
+            Dimension::IonMobility(_) => <IonMobility as CoordinateSystem>::$f(),
+            Dimension::Dimensionless(_) => <Dimensionless as CoordinateSystem>::$f(),
+        }
+    };
+}
+
 impl Dimension {
     pub const fn name(&self) -> &'static str {
         match self {
@@ -27,11 +39,19 @@ impl Dimension {
             Dimension::Dimensionless(_) => "",
         }
     }
+
+    pub fn minimum_value(&self) -> f64 {
+        dim_dispatch!(self, minimum_value)
+    }
+
+    pub fn maximum_value(&self) -> f64 {
+        dim_dispatch!(self, maximum_value)
+    }
 }
 
 impl Display for Dimension {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{}", self.name())
     }
 }
 
@@ -107,6 +127,10 @@ pub trait CoordinateSystem: Sized {
 
     fn coordinate_mut<T: CoordinateLikeMut<Self>>(inst: &mut T) -> &mut f64 {
         CoordinateLikeMut::<Self>::coordinate_mut(inst)
+    }
+
+    fn name_of(&self) -> &'static str {
+        Self::name()
     }
 
     fn dimension() -> Dimension;
@@ -294,6 +318,58 @@ impl<T: HasProximity> HasProximity for Option<T> {
         match (self, other) {
             (Some(x), Some(y)) => x.is_close(y),
             _ => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_is_close() {
+        assert!(0.0.is_close(&0.0));
+        assert!(Some(0.0).is_close(&Some(0.0)));
+        assert!(!Some(0.0).is_close(&None));
+        assert!(5.is_close(&5));
+    }
+
+    #[test]
+    fn test_axes() {
+        let dims = [Dimension::MZ(MZ()), Dimension::Mass(Mass()), Dimension::Time(Time()), Dimension::IonMobility(IonMobility()), Dimension::Dimensionless(Dimensionless())];
+        for dim in dims {
+            match dim {
+                Dimension::MZ(x) => {
+                    assert_eq!(x.name_of(), "m/z");
+                    assert_eq!(dim.to_string(), "m/z");
+                    assert_eq!(dim.minimum_value(), 0.0);
+                    assert_eq!(dim.maximum_value(), f64::INFINITY);
+                },
+                Dimension::Mass(x) => {
+                    assert_eq!(x.name_of(), "neutral mass");
+                    assert_eq!(dim.to_string(), "neutral mass");
+                    assert_eq!(dim.minimum_value(), 0.0);
+                    assert_eq!(dim.maximum_value(), f64::INFINITY);
+                },
+                Dimension::IonMobility(x) => {
+                    assert_eq!(x.name_of(), "ion mobility");
+                    assert_eq!(dim.to_string(), "ion mobility");
+                    assert_eq!(dim.minimum_value(), 0.0);
+                    assert_eq!(dim.maximum_value(), f64::INFINITY);
+                }
+                Dimension::Time(x) => {
+                    assert_eq!(x.name_of(), "time");
+                    assert_eq!(dim.to_string(), "time");
+                    assert_eq!(dim.minimum_value(), 0.0);
+                    assert_eq!(dim.maximum_value(), f64::INFINITY);
+                }
+                Dimension::Dimensionless(x) => {
+                    assert_eq!(x.name_of(), "");
+                    assert_eq!(dim.to_string(), "");
+                    assert_eq!(dim.minimum_value(), 0.0);
+                    assert_eq!(dim.maximum_value(), f64::INFINITY);
+                }
+            }
         }
     }
 }

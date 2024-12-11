@@ -144,8 +144,8 @@ impl<V1: HasProximity, V2: HasProximity> BoundingBox<V1, V2> {
         V1: Num,
         V2: Num,
     {
-        let dim0 = self.end.0 - self.start.0;
-        let dim1 = self.end.1 - self.start.1;
+        let dim0 = (self.end.0 - self.start.0) / (V1::one() + V1::one()) + self.start.0;
+        let dim1 = (self.end.1 - self.start.1) / (V2::one() + V2::one()) + self.start.1;
         (dim0, dim1)
     }
 }
@@ -257,7 +257,7 @@ impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, Di
                 .fold(bbox, |bbox: BoundingBox<V1, V2>, member| {
                     bbox.combine(member)
                 });
-            bbox
+            bbox.combine(&self.as_bounding_box())
         } else {
             self.as_bounding_box()
         };
@@ -365,7 +365,6 @@ impl<
         T: Span2D<DimType1 = V1, DimType2 = V2>,
     > QuadTree<V1, V2, T>
 {
-
     pub fn empty() -> Self {
         Self::new(Vec::new())
     }
@@ -527,6 +526,7 @@ impl<
         self.nodes_overlaps(item)
             .into_iter()
             .flat_map(|(i, node)| node.members.iter())
+            .filter(|m| m.overlaps(item))
             .collect()
     }
 
@@ -541,7 +541,7 @@ impl<
         let mut queue = VecDeque::new();
         let mut nodes = Vec::new();
 
-        if root.contains_interval(item) {
+        if root.overlaps(item) {
             queue.push_back((0usize, root));
         }
 
@@ -884,12 +884,13 @@ mod test {
 
     #[test]
     fn test_tree() {
-        let x = BoundingBox::new((5.0, 3.0), (10.0, 6.0));
-        let y = BoundingBox::new((7.0, 3.0), (14.0, 6.0));
-        let z = BoundingBox::new((7.0, 4.0), (12.0, 5.0));
-        let q = BoundingBox::new((3.0, 2.0), (8.0, 5.0));
-
-        let mut tree = QuadTree::from_iter([x, y, z, q]);
+        let mut tree = {
+            let x = BoundingBox::new((5.0, 3.0), (10.0, 6.0));
+            let y = BoundingBox::new((7.0, 3.0), (14.0, 6.0));
+            let z = BoundingBox::new((7.0, 4.0), (12.0, 5.0));
+            let q = BoundingBox::new((3.0, 2.0), (8.0, 5.0));
+            QuadTree::from_iter([x, y, z, q])
+        };
         let bb = tree.as_bounding_box();
 
         let e = BoundingBox::new((8.0, 3.0), (10.0, 7.0));
@@ -902,5 +903,79 @@ mod test {
         assert_eq!(items.len(), 2);
 
         assert_eq!(tree.iter().flatten().count(), 5);
+
+        {
+            let x = BoundingBox::new((5.0, 3.0), (10.0, 6.0));
+            let y = BoundingBox::new((7.0, 3.0), (14.0, 6.0));
+            let z = BoundingBox::new((7.0, 4.0), (12.0, 5.0));
+            let q = BoundingBox::new((3.0, 2.0), (8.0, 5.0));
+            tree.insert(x);
+            tree.insert(y);
+            tree.insert(z);
+            tree.insert(q);
+        }
+        assert_eq!(tree.iter().flatten().count(), 9);
+
+        let items = tree.contains_point((a, b));
+        assert_eq!(items.len(), 4);
+    }
+
+    #[test]
+    fn test_partition() {
+        let master_bbox = BoundingBox::new((0.0, 0.0), (15.0, 15.0));
+
+        fn split_bbox(bbox: &BoundingBox<f64, f64>) -> [BoundingBox<f64, f64>; 4] {
+            let center = bbox.centroid();
+            let mut upper_left = BoundingBox::new(
+                (bbox.start.0, bbox.start.1),
+                (center.0 + 1.0, center.1 + 1.0),
+            );
+            let mut lower_right = BoundingBox::new(
+                ((center.0 - 1.0).max(0.0), (center.1 - 1.0).max(0.0)),
+                (bbox.end.0, bbox.end.1),
+            );
+            let mut lower_left = BoundingBox::new(
+                (bbox.start.0, (center.1 - 1.0).max(0.0)),
+                (center.0 + 1.0, bbox.end.1),
+            );
+            let mut upper_right = BoundingBox::new(
+                ((center.0 - 1.0).max(0.0), bbox.start.1),
+                (bbox.end.0, center.1 + 1.0),
+            );
+            let quads = [upper_left, upper_right, lower_left, lower_right];
+            for q in quads.iter() {
+                assert!(q.start.0 >= 0.0);
+                assert!(q.start.1 >= 0.0);
+            }
+            quads
+        }
+
+        let boxes: Vec<_> = split_bbox(&master_bbox)
+            .map(|b| split_bbox(&b))
+            .as_flattened()
+            .iter()
+            .map(split_bbox)
+            .flatten()
+            .map(|b| split_bbox(&b))
+            .flatten()
+            .map(|b| split_bbox(&b))
+            .flatten()
+            .map(|b| split_bbox(&b))
+            .flatten()
+            .collect();
+        let mut tree = QuadTree::empty();
+        for bbox in boxes {
+            tree.insert(bbox);
+        }
+
+        assert_eq!(tree.as_bounding_box(), master_bbox);
+
+        let ext = BoundingBox::new((16.0, 13.0), (18.0, 15.0));
+        let before = tree.overlaps(&ext).len();
+        tree.insert(ext.clone());
+        let after = tree.overlaps(&ext);
+        assert_eq!(before + 1, after.len());
+        let after = tree.overlaps_iter(&ext);
+        assert_eq!(before + 1, after.count());
     }
 }
