@@ -296,6 +296,17 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
         QueryIter::new(self, SimpleInterval::new(value, value))
     }
 
+    /// A mutable version of [`IntervalTree::contains_iter`].
+    ///
+    /// See the safety warning on [`QueryIterMut`]
+    pub fn contains_iter_mut(
+        &'members mut self,
+        value: V,
+    ) -> QueryIterMut<'members, V, T, SimpleInterval<V>, ContainsPredicate<V, T, SimpleInterval<V>>>
+    {
+        QueryIterMut::new(self, SimpleInterval::new(value, value))
+    }
+
     pub fn contains_point(&'members self, value: V) -> Vec<&'members T> {
         let mut results: Vec<&'members T> = Vec::new();
 
@@ -342,6 +353,16 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
         query: Q,
     ) -> QueryIter<'members, V, T, Q, OverlapPredicate<V, T, Q>> {
         QueryIter::new(self, query)
+    }
+
+    /// A mutable version of [`IntervalTree::overlaps_iter`].
+    ///
+    /// See the safety warning on [`QueryIterMut`]
+    pub fn overlaps_iter_mut<Q: Span1D<DimType = V>>(
+        &'members mut self,
+        query: Q,
+    ) -> QueryIterMut<'members, V, T, Q, OverlapPredicate<V, T, Q>> {
+        QueryIterMut::new(self, query)
     }
 
     pub fn overlaps<Q: Span1D<DimType = V>>(&'members self, span: Q) -> Vec<&'members T> {
@@ -742,6 +763,146 @@ impl<
     }
 }
 
+/// Provides a mutable iterator over a subset of elements in an [`IntervalTree`].
+///
+/// # Safety
+/// This iterator should not be used in a way that alters the interval bounds of the
+/// element or else it risks making it unreachable without explicitly calling [`IntervalTree::balance`]
+#[derive(Debug)]
+pub struct QueryIterMut<
+    'a,
+    V: Real + Sum + HasProximity,
+    T: Span1D<DimType = V>,
+    Q: Span1D<DimType = V> + 'a,
+    P: NodeSelectorCriterion<V, T, Q>,
+> {
+    ivtree: &'a mut IntervalTree<V, T>,
+    queue: VecDeque<usize>,
+    current_node: Option<usize>,
+    query: Q,
+    predicate: P,
+    i: usize,
+}
+
+impl<
+        'a,
+        V: Real + Sum + HasProximity,
+        T: Span1D<DimType = V>,
+        Q: Span1D<DimType = V> + 'a,
+        P: NodeSelectorCriterion<V, T, Q>,
+    > QueryIterMut<'a, V, T, Q, P>
+{
+    pub fn new(ivtree: &'a mut IntervalTree<V, T>, query: Q) -> Self {
+        let queue = VecDeque::from(vec![0]);
+        let mut this = Self {
+            ivtree,
+            queue,
+            current_node: None,
+            query,
+            i: 0,
+            predicate: P::new(),
+        };
+        this.find_next_node();
+        this
+    }
+
+    fn find_value_from_node(&mut self, node: usize) -> Option<usize> {
+        let node = &mut self.ivtree.nodes[node];
+        let n = node.members.len();
+        if self.i < n {
+            if let Some((i, _v)) = node
+                .members
+                .iter()
+                .enumerate()
+                .skip(self.i)
+                .find(|(_, v)| self.predicate.item_predicate(v, &self.query))
+            {
+                self.i = i + 1;
+                Some(i)
+            } else {
+                self.i = n;
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn find_next_value(&mut self) -> Option<(usize, usize)> {
+        if let Some(node) = self.current_node {
+            if let Some(value) = self.find_value_from_node(node) {
+                return Some((node, value));
+            }
+            loop {
+                if !self.find_next_node() {
+                    break;
+                }
+                let node_i = self.current_node.unwrap();
+                let item_i = self.find_value_from_node(self.current_node.unwrap());
+                if item_i.is_some() {
+                    return Some((node_i, item_i.unwrap()));
+                }
+            }
+        }
+        None
+    }
+
+    fn find_next_node(&mut self) -> bool {
+        if let Some(node) = self.current_node {
+            let node = &self.ivtree.nodes[node];
+            if let Some(ci) = node.left_child {
+                let c = &self.ivtree.nodes[ci];
+                if self.predicate.node_predicate(c, &self.query) {
+                    self.queue.push_back(ci);
+                }
+            }
+
+            if let Some(ci) = node.right_child {
+                let c = &self.ivtree.nodes[ci];
+                if self.predicate.node_predicate(c, &self.query) {
+                    self.queue.push_back(ci);
+                }
+            }
+        }
+        self.current_node = None;
+        self.i = 0;
+        self.current_node = self.queue.pop_front();
+        self.current_node.is_some()
+    }
+}
+
+/// # Safety
+/// This iterator should not be used in a way that alters the interval bounds of the
+/// element or else it risks making it unreachable without explicitly calling [`IntervalTree::balance`]
+impl<
+        'a,
+        V: Real + Sum + HasProximity,
+        T: Span1D<DimType = V>,
+        Q: Span1D<DimType = V> + 'a,
+        P: NodeSelectorCriterion<V, T, Q>,
+    > Iterator for QueryIterMut<'a, V, T, Q, P>
+{
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((i, j)) = self.find_next_value() {
+            if let Some(x) = self
+                .ivtree
+                .nodes
+                .get_mut(i)
+                .and_then(|f| f.members.get_mut(j))
+            {
+                let y = unsafe { &mut *core::ptr::addr_of_mut!(*x) };
+                Some(y)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
 pub trait NodeSelectorCriterion<
     V: Real + Sum + HasProximity,
     T: Span1D<DimType = V>,
@@ -939,6 +1100,10 @@ mod test {
 
         assert_eq!(tree.start(), -6.0);
         assert_eq!(tree.end(), 18.0);
+        let n = tree
+            .overlaps_iter_mut(SimpleInterval::new(tree.start(), tree.end()))
+            .count();
+        assert_eq!(tree.iter().flatten().count(), n);
     }
 
     #[test]
@@ -959,7 +1124,11 @@ mod test {
             eprintln!("Node {i}: {node:?}");
         }
 
-        assert_eq!(tree.flatten().len(), ivs.len(), "Flattening the tree didn't produce as many items as original collection");
+        assert_eq!(
+            tree.flatten().len(),
+            ivs.len(),
+            "Flattening the tree didn't produce as many items as original collection"
+        );
 
         // Expected to be spanned by two intervals
         let spanning = tree.contains_point(1.0);

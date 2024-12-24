@@ -19,7 +19,7 @@ pub use dim::{
 
 pub use range::{CoordinateRange, CoordinateRangeParseError, SimpleInterval, Span1D};
 pub use bbox::{BoundingBox, Span2D, QuadTree, QuadTreeNode, QueryIter as QueryIter2D};
-pub use ivtree::{IntervalTree, IntervalTreeNode, PreorderIter, QueryIter as QueryIter1D};
+pub use ivtree::{IntervalTree, IntervalTreeNode, PreorderIter, QueryIter as QueryIter1D, QueryIterMut as QueryIterMut1D};
 
 #[cfg(test)]
 mod test {
