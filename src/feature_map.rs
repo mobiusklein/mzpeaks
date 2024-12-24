@@ -236,6 +236,10 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         self.features.last()
     }
 
+    pub fn as_slice(&self) -> &[T] {
+        &self.features
+    }
+
     pub fn as_view(&self) -> FeatureMapView<'_, X, Y, T> {
         FeatureMapView::new(&self.features)
     }
@@ -435,6 +439,16 @@ impl<X, Y, T: FeatureLike<X, Y>> ops::IndexMut<usize> for FeatureMap<X, Y, T> {
 
 impl_slicing!(FeatureMap<X, Y, T>, X, Y, T: FeatureLike<X, Y>);
 
+impl<X, Y, T: FeatureLike<X, Y>> IntoIterator for FeatureMap<X, Y, T> {
+    type Item = T;
+
+    type IntoIter = std::vec::IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.features.into_iter()
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FeatureMapView<'a, X, Y, T: FeatureLike<X, Y>> {
@@ -508,6 +522,17 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMapLike<X, Y, T> for FeatureMapView<
         self.features.iter()
     }
 }
+
+impl<'a, X, Y, T: FeatureLike<X, Y>> IntoIterator for FeatureMapView<'a, X, Y, T> {
+    type Item = &'a T;
+
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.features.iter()
+    }
+}
+
 
 #[cfg(test)]
 mod test {

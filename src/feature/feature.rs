@@ -345,6 +345,12 @@ where
     fn push_raw(&mut self, x: f64, y: f64, z: f32) {
         self.push_raw(x, y, z)
     }
+
+    fn clear(&mut self) {
+        self.x.clear();
+        self.y.clear();
+        self.z.clear();
+    }
 }
 
 /// An iterator producing immutable references to feature data

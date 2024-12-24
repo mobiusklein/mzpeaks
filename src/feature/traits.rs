@@ -154,9 +154,17 @@ pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
     /// Add a new peak-like reference to the feature at a given y "time" coordinate. If the "time"
     /// is not in sorted order, it should automatically re-sort.
     fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64);
+
     /// As [`FeatureLikeMut::push`], but instead add raw values instead of deriving them from
     /// a peak-like reference.
     fn push_raw(&mut self, x: f64, y: f64, z: f32);
+
+    /// Clear all the series dimensions.
+    ///
+    /// **NOTE**: If not provided, this will panic if called until this trait stabilizes.
+    fn clear(&mut self) {
+        unimplemented!()
+    }
 
     /// Get a mutable reference to feature data at a specified index
     fn at_mut(&mut self, index: usize) -> Option<(&mut f64, f64, &mut f32)> {

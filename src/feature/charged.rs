@@ -40,6 +40,10 @@ where
     fn push_raw(&mut self, x: f64, y: f64, z: f32) {
         <Feature<X, Y> as FeatureLikeMut<X, Y>>::push_raw(&mut self.feature, x, y, z)
     }
+
+    fn clear(&mut self) {
+        self.feature.clear();
+    }
 }
 
 impl<X, Y> TimeInterval<Y> for ChargedFeature<X, Y>

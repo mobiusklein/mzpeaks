@@ -358,6 +358,11 @@ impl<X, Y> FeatureLikeMut<X, Y> for SimpleFeature<X, Y> {
     fn push_raw(&mut self, x: f64, y: f64, z: f32) {
         self.push_raw(x, y, z);
     }
+
+    fn clear(&mut self) {
+        self.y.clear();
+        self.z.clear();
+    }
 }
 
 /// A non-owning version of [`SimpleFeature`]
