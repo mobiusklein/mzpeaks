@@ -4,7 +4,7 @@ use std::{cmp::Ordering, ops::RangeBounds};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ}, DeconvolutedPeak, IntensityMeasurement, KnownCharge, MZLocated, MassLocated
+    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ}, DeconvolutedPeak, IntensityMeasurement, KnownCharge, KnownChargeMut, MZLocated, MassLocated
 };
 
 use super::{feature::{Feature, FeatureView, Iter, IterMut}, traits::BuildFromPeak, PeakSeries, TimeArray};
@@ -211,6 +211,12 @@ impl<X, Y> KnownCharge for ChargedFeature<X, Y> {
     }
 }
 
+impl<X, Y> KnownChargeMut for ChargedFeature<X, Y> {
+    fn charge_mut(&mut self) -> &mut i32 {
+        &mut self.charge
+    }
+}
+
 impl<X, Y> AsRef<Feature<X, Y>> for ChargedFeature<X, Y> {
     fn as_ref(&self) -> &Feature<X, Y> {
         &self.feature
@@ -399,6 +405,12 @@ impl<'a, X, Y> CoordinateLike<X> for ChargedFeatureView<'a, X, Y> {
 impl<'a, X, Y> IntensityMeasurement for ChargedFeatureView<'a, X, Y> {
     fn intensity(&self) -> f32 {
         self.feature.intensity()
+    }
+}
+
+impl<'a, X, Y> KnownCharge for ChargedFeatureView<'a, X, Y> {
+    fn charge(&self) -> i32 {
+        self.charge
     }
 }
 
