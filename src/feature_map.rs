@@ -10,6 +10,9 @@ use std::{
     ops::{self, Range},
 };
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 /// A two dimensional feature collection where features are sorted by the `X` dimension
 /// and each feature is internally sorted by the `Y` dimension.
 pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output = T> {
@@ -446,6 +449,21 @@ impl<X, Y, T: FeatureLike<X, Y>> IntoIterator for FeatureMap<X, Y, T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.features.into_iter()
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<X: Send + Sync, Y: Send + Sync, T: FeatureLike<X, Y> + Sync + Send> FeatureMap<X, Y, T> {
+    pub fn par_iter(&self) -> rayon::slice::Iter<'_, T> {
+        self.features.par_iter()
+    }
+
+    pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, T> {
+        self.features.par_iter_mut()
+    }
+
+    pub fn into_par_iter(self) -> rayon::vec::IntoIter<T> {
+        self.features.into_par_iter()
     }
 }
 

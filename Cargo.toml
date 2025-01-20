@@ -21,10 +21,13 @@ exclude = ["test/"]
 name = "mzpeaks"
 
 [features]
+
 serde-support = ["serde", ]
+rayon = ["dep:rayon"]
 
 [dependencies]
 num-traits = "0.2"
+rayon = { version = "1", optional = true }
 serde = {version="1.0.130", features=["derive"], optional=true}
 
 [dev-dependencies]

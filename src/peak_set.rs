@@ -20,6 +20,9 @@ use std::ops::{self, Range};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 use crate::mass_error::Tolerance;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
@@ -667,6 +670,22 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
 
     pub fn as_mut_slice(&mut self) -> &mut [P] {
         self.peaks.as_mut_slice()
+    }
+}
+
+
+#[cfg(feature = "rayon")]
+impl<P: IndexedCoordinate<C> + Sync + Send, C: Sync + Send> PeakSetVec<P, C> {
+    pub fn par_iter(&self) -> rayon::slice::Iter<'_, P> where P: Send + Sync, C: Send + Sync {
+        self.peaks.par_iter()
+    }
+
+    pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, P> {
+        self.peaks.par_iter_mut()
+    }
+
+    pub fn into_par_iter(self) -> rayon::vec::IntoIter<P> {
+        self.peaks.into_par_iter()
     }
 }
 
