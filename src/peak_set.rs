@@ -586,6 +586,7 @@ macro_rules! impl_slicing {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PeakSetVec<P: IndexedCoordinate<C>, C> {
     pub peaks: Vec<P>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     phantom: marker::PhantomData<C>,
 }
 

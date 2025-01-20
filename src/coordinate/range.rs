@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 pub struct CoordinateRange<C> {
     pub start: Option<f64>,
     pub end: Option<f64>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     coord: PhantomData<C>,
 }
 

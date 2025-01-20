@@ -161,7 +161,7 @@ impl<X, Y> PartialOrd for SimpleFeature<X, Y> {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-        match self.y.partial_cmp(&other.y) {
+        match self.start_time().partial_cmp(&other.start_time()) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
@@ -375,6 +375,7 @@ pub struct SimpleFeatureView<'a, X, Y> {
     _x: PhantomData<X>,
     _y: PhantomData<Y>,
 }
+
 impl<'a, X, Y> CoArrayOps for SimpleFeatureView<'a, X, Y> {}
 
 impl<'a, X, Y> SimpleFeatureView<'a, X, Y> {
@@ -449,7 +450,7 @@ impl<'a, X, Y> PartialOrd for SimpleFeatureView<'a, X, Y> {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-        match self.y.partial_cmp(other.y) {
+        match self.start_time().partial_cmp(&other.start_time()) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }

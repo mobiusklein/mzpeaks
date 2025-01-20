@@ -51,10 +51,14 @@ impl FromStr for Tolerance {
 }
 
 
+/// Represent a quantity of error tolerance for searching a collection with a
+/// certain amount of error allowed when finding matches.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Tolerance {
+    /// Parts-per-million mass accuracy $`\frac{a - b}{b} × 10^6`$
     PPM(f64),
+    /// Absolute error mass accuracy, expressed in Daltons $`a - b`$
     Da(f64)
 }
 
@@ -68,6 +72,11 @@ impl ToString for Tolerance {
 }
 
 impl Tolerance {
+    /// An alias for `Da` for non-mass units
+    #[allow(non_snake_case)]
+    pub fn Abs(value: f64) -> Self {
+        Self::Da(value)
+    }
 
     /// The interval around `query` which is within this `Tolerance`
     /// instance's range.
@@ -123,11 +132,13 @@ impl Tolerance {
         }
     }
 
+    /// As [`Self::bounds`] but packaged into [`RangeInclusive`]
     pub fn as_range(&self, query: f64) -> RangeInclusive<f64> {
         let (low, hi) = self.bounds(query);
         RangeInclusive::new(low, hi)
     }
 
+    /// As [`Self::bounds`] but packaged into [`SimpleInterval`](crate::coordinate::SimpleInterval)
     pub fn as_interval(&self, query: f64) -> crate::coordinate::SimpleInterval<f64> {
         let bounds = self.bounds(query);
         bounds.into()
@@ -146,6 +157,7 @@ impl ops::Mul<f64> for Tolerance {
     }
 }
 
+/// Converts a `f64` to [`Tolerance::PPM`]
 impl From<f64> for Tolerance {
     fn from(value: f64) -> Self {
         Self::PPM(value)

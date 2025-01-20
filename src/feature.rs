@@ -12,7 +12,7 @@ mod util;
 
 pub use traits::{
     FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut, SplittableFeatureLike,
-    TimeArray, TimeInterval,
+    TimeArray, TimeInterval, PeakSeries, BuildFromPeak,
 };
 
 pub use charged::{

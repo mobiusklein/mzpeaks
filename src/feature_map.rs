@@ -288,7 +288,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
     }
 
     /// Extract a subset of this [`FeatureMap`] that overlap the specified `y` coordinate
-    pub fn spanning(&'a self, y: f64) -> FeatureMap<X, Y, &T> {
+    pub fn spanning(&'a self, y: f64) -> FeatureMap<X, Y, &'a T> {
         let subset: Vec<_> = self.iter().filter(|f| f.spans(y)).collect();
         FeatureMap::wrap(subset)
     }

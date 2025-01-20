@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::{coordinate::CoordinateLike, IntensityMeasurement};
 use crate::{CentroidPeak, IonMobility, Time, MZ};
 
-use super::traits::{CoArrayOps, FeatureLike, FeatureLikeMut, SplittableFeatureLike};
+use super::traits::{BuildFromPeak, CoArrayOps, FeatureLike, FeatureLikeMut, SplittableFeatureLike};
 use super::util::{NonNan, EMPTY_X, EMPTY_Y, EMPTY_Z};
-use super::{TimeArray, TimeInterval};
+use super::{PeakSeries, TimeArray, TimeInterval};
 
 /// A basic implementation of [`FeatureLike`] and [`FeatureLikeMut`]
 #[derive(Debug, Default, Clone)]
@@ -21,7 +21,9 @@ pub struct Feature<X, Y> {
     x: Vec<f64>,
     y: Vec<f64>,
     z: Vec<f32>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _x: PhantomData<X>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _y: PhantomData<Y>,
 }
 
@@ -301,6 +303,22 @@ impl<X, Y> TimeInterval<Y> for Feature<X, Y> {
 impl<Y> Feature<MZ, Y> {
     pub fn iter_peaks(&self) -> MZPeakIter<'_, Y> {
         MZPeakIter::new(self)
+    }
+}
+
+impl<'a, Y: 'a> PeakSeries<'a> for Feature<MZ, Y> {
+    type Peak = CentroidPeak;
+
+    type Iter = MZPeakIter<'a, Y>;
+
+    fn iter_peaks(&'a self) -> Self::Iter {
+        self.iter_peaks()
+    }
+}
+
+impl<X, Y, T: CoordinateLike<X> + IntensityMeasurement> BuildFromPeak<T> for Feature<X, Y> {
+    fn push_peak(&mut self, value: T, time: f64) {
+        self.push(&value, time);
     }
 }
 
@@ -690,7 +708,9 @@ pub struct FeatureView<'a, X, Y> {
     x: &'a [f64],
     y: &'a [f64],
     z: &'a [f32],
+    #[cfg_attr(feature = "serde", serde(skip))]
     _x: PhantomData<X>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _y: PhantomData<Y>,
 }
 
@@ -715,6 +735,7 @@ impl<'a, X, Y> FeatureView<'a, X, Y> {
         self.weighted_average(self.x, self.z)
     }
 
+    #[allow(unused)]
     fn coordinate_y(&self) -> f64 {
         self.weighted_average(self.y, self.z)
     }
@@ -791,7 +812,7 @@ impl<'a, X, Y> PartialOrd for FeatureView<'a, X, Y> {
             Ordering::Equal => {}
             x => return Some(x),
         };
-        Some(self.coordinate_y().total_cmp(&other.coordinate_y()))
+        self.y.first().partial_cmp(&other.y.first())
     }
 }
 

@@ -83,6 +83,28 @@ pub trait TimeArray<T> : TimeInterval<T> {
     fn intensity_view(&self) -> &[f32];
 }
 
+/// Iterate over a [`FeatureLike`] type, producing `(peak, time)` pairs
+pub trait PeakSeries<'a> {
+    type Peak;
+    type Iter: Iterator<Item = (Self::Peak, f64)>;
+
+    fn iter_peaks(&'a self) -> Self::Iter;
+}
+
+/// Build a [`FeatureLikeMut`] type from a sequence of `(peak, time)` pairs
+pub trait BuildFromPeak<T> {
+
+    /// Like [`FeatureLikeMut::push`] but permitting specialized behavior
+    fn push_peak(&mut self, value: T, time: f64);
+
+    /// Like [`Extend`] but uses [`BuildFromPeak::push_peak`]
+    fn extend_from_peaks<I: IntoIterator<Item=(T, f64)>>(&mut self, iter: I) {
+        for (p, t) in iter {
+            self.push_peak(p, t);
+        }
+    }
+}
+
 
 impl<'a, T, U: TimeArray<T>> TimeArray<T> for &'a U {
     fn time_view(&self) -> &[f64] {
@@ -246,6 +268,8 @@ pub(crate) trait CoArrayOps {
 /// A trait to split features at a given point or points, producing either copies
 /// or borrows of the same feature data.
 pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
+    /// The type that will hold the split feature parts. They could be borrowed
+    /// or own a copy of their original data.
     type ViewType: FeatureLike<X, Y>;
 
     /// Split the feature at `index`, segmenting before and after it. The

@@ -4,11 +4,10 @@ use std::{cmp::Ordering, ops::RangeBounds};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ},
-    DeconvolutedPeak, IntensityMeasurement, KnownCharge, MassLocated,
+    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ}, DeconvolutedPeak, IntensityMeasurement, KnownCharge, MZLocated, MassLocated
 };
 
-use super::{feature::{Feature, FeatureView, Iter, IterMut}, TimeArray};
+use super::{feature::{Feature, FeatureView, Iter, IterMut}, traits::BuildFromPeak, PeakSeries, TimeArray};
 use super::traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval};
 
 /// A [`Feature`] with an associated `charge`, implementing the [`KnownCharge`] trait.
@@ -172,6 +171,16 @@ impl<Y> ChargedFeature<Mass, Y> {
     }
 }
 
+impl<'a, Y: 'a> PeakSeries<'a> for ChargedFeature<Mass, Y> {
+    type Peak = DeconvolutedPeak;
+
+    type Iter = DeconvolutedPeakIter<'a, Y>;
+
+    fn iter_peaks(&'a self) -> Self::Iter {
+        self.iter_peaks()
+    }
+}
+
 impl<X, Y> PartialEq for ChargedFeature<X, Y> {
     fn eq(&self, other: &Self) -> bool {
         self.feature == other.feature && self.charge == other.charge
@@ -315,6 +324,19 @@ impl<X, Y> IntoIterator for ChargedFeature<X, Y> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.feature.into_iter()
+    }
+}
+
+
+impl<Y, T: MZLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T> for ChargedFeature<MZ, Y> {
+    fn push_peak(&mut self, value: T, time: f64) {
+        self.push(&value, time);
+    }
+}
+
+impl<Y, T: MassLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T> for ChargedFeature<Mass, Y> {
+    fn push_peak(&mut self, value: T, time: f64) {
+        self.push(&value, time);
     }
 }
 

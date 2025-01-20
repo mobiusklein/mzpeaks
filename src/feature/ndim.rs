@@ -226,7 +226,9 @@ pub struct NDPoint<T, Y> {
     pub dimensions: Vec<f64>,
     time: f64,
     intensity: f32,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _t: PhantomData<T>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _y: PhantomData<Y>,
 }
 
@@ -385,7 +387,9 @@ pub struct NDPointMutRef<'a, T, Y> {
     pub dimensions: Vec<&'a mut f64>,
     time: f64,
     intensity: &'a mut f32,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _t: PhantomData<T>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _y: PhantomData<Y>,
 }
 

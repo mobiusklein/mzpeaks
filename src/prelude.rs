@@ -2,11 +2,11 @@
 
 pub use crate::coordinate::{
     CoordinateLike, CoordinateLikeMut, CoordinateSystem as _, HasProximity, IndexedCoordinate,
-    IonMobilityLocated, MZLocated, MassLocated, TimeLocated, Span1D, Span2D
+    IonMobilityLocated, MZLocated, MassLocated, Span1D, Span2D, TimeLocated,
 };
 pub use crate::feature::{
-    FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut, SplittableFeatureLike,
-    TimeArray, TimeInterval,
+    BuildFromPeak, FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut,
+    PeakSeries, SplittableFeatureLike, TimeArray, TimeInterval,
 };
 pub use crate::feature_map::{FeatureMapLike, FeatureMapLikeMut};
 pub use crate::mass_error::Tolerance;
