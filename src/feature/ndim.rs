@@ -1,34 +1,119 @@
-use core::slice;
-use std::marker::PhantomData;
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use std::{iter::FusedIterator, marker::PhantomData, ops::Index};
 
 use crate::{coordinate::CoordinateLike, IntensityMeasurement};
-use crate::{IntensityMeasurementMut, Mass, MZ};
+use crate::{
+    feature::{AsPeakIter, BuildFromPeak},
+    peak::{IonMobilityAwareCentroidPeak, IonMobilityAwareDeconvolutedPeak},
+    prelude::IonMobilityLocated,
+    CoordinateLikeMut, IntensityMeasurementMut, IonMobility, KnownCharge, MZLocated, Mass,
+    MassLocated, Time, MZ,
+};
+#[cfg(feature = "serde")]
+use {
+    serde::{Deserialize, Serialize},
+    serde_big_array::BigArray,
+};
 
-use super::traits::{CoArrayOps, FeatureLikeNDLike, FeatureLikeNDLikeMut};
 use super::util::NonNan;
+use super::{
+    charged::Charged,
+    traits::{CoArrayOps, NDFeatureLike, NDFeatureLikeMut},
+};
 use super::{TimeArray, TimeInterval};
 
-#[derive(Debug)]
+macro_rules! impl_dim_pt {
+    ($pt:ident, $dim:ty, $idx:literal) => {
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate(&self) -> f64 {
+                self.dimensions[$idx]
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::IonMobility>
+            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate(&self) -> f64 {
+                self.dimensions[$idx + 1]
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate(&self) -> f64 {
+                self.dimensions[$idx]
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::Time>
+            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate(&self) -> f64 {
+                self.dimensions[$idx + 1]
+            }
+        }
+
+        //
+
+        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                &mut self.dimensions[$idx]
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$crate::IonMobility>
+            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                &mut self.dimensions[$idx + 1]
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                &mut self.dimensions[$idx]
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$crate::Time>
+            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                &mut self.dimensions[$idx + 1]
+            }
+        }
+    };
+}
+
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct NDFeature<T, Y> {
-    dimensions: Vec<Vec<f64>>,
-    time: Vec<f64>,
-    intensity: Vec<f32>,
+pub struct NDPoint<const N: usize, T, Y> {
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
+    pub dimensions: [f64; N],
+    pub time: f64,
+    pub intensity: f32,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _t: PhantomData<T>,
+    #[cfg_attr(feature = "serde", serde(skip))]
     _y: PhantomData<Y>,
 }
 
-impl<T, Y> Default for NDFeature<T, Y> {
-    fn default() -> Self {
-        Self::new(Vec::new(), Vec::new(), Vec::new())
+impl<const N: usize, T, Y> Index<usize> for NDPoint<N, T, Y> {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.dimensions[index]
     }
 }
 
-impl<T, Y> NDFeature<T, Y> {
-    pub fn new(dimensions: Vec<Vec<f64>>, time: Vec<f64>, intensity: Vec<f32>) -> Self {
+impl<const N: usize, T, Y> NDPoint<N, T, Y> {
+    pub fn new(dimensions: [f64; N], time: f64, intensity: f32) -> Self {
         Self {
             dimensions,
             time,
@@ -38,26 +123,508 @@ impl<T, Y> NDFeature<T, Y> {
         }
     }
 
-    #[allow(unused)]
-    pub fn coordinate_dim(&self, i: usize) -> f64 {
-        self.weighted_average(&self.dimensions[i], &self.intensity)
+    pub fn get(&self, index: usize) -> Option<f64> {
+        self.dimensions.get(index).copied()
     }
+}
 
-    fn coordinate_y(&self) -> f64 {
-        self.weighted_average(&self.time, &self.intensity)
+impl<const N: usize, T, Y> IntensityMeasurement for NDPoint<N, T, Y> {
+    fn intensity(&self) -> f32 {
+        self.intensity
     }
+}
 
-    pub unsafe fn push_raw_unchecked(&mut self, point: NDPoint<T, Y>) {
-        self.time.push(point.time);
-        self.intensity.push(point.intensity);
-        if self.dimensions.is_empty() {
-            for _ in 0..point.dimensions.len() {
-                self.dimensions.push(Vec::with_capacity(2));
+impl<const N: usize, T, Y> IntensityMeasurementMut for NDPoint<N, T, Y> {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        &mut self.intensity
+    }
+}
+
+impl<const N: usize, T, Y> PartialEq for NDPoint<N, T, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.dimensions == other.dimensions
+            && self.time == other.time
+            && self.intensity == other.intensity
+            && self._t == other._t
+            && self._y == other._y
+    }
+}
+
+impl<const N: usize, T, Y> PartialOrd for NDPoint<N, T, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.dimensions.partial_cmp(&other.dimensions) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.time.partial_cmp(&other.time) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.intensity.partial_cmp(&other.intensity) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self._t.partial_cmp(&other._t) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self._y.partial_cmp(&other._y)
+    }
+}
+
+impl<const N: usize, T, Y> CoordinateLike<Y> for NDPoint<N, T, Y> {
+    fn coordinate(&self) -> f64 {
+        self.time
+    }
+}
+
+impl<const N: usize, T, Y> CoordinateLikeMut<Y> for NDPoint<N, T, Y> {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        &mut self.time
+    }
+}
+
+impl<const N: usize, T, Y> Default for NDPoint<N, T, Y> {
+    fn default() -> Self {
+        Self {
+            dimensions: [0.0; N],
+            time: Default::default(),
+            intensity: Default::default(),
+            _t: Default::default(),
+            _y: Default::default(),
+        }
+    }
+}
+
+impl_dim_pt!(NDPoint, MZ, 0);
+impl_dim_pt!(NDPoint, Mass, 0);
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct NDPointMutRef<'a, const N: usize, T, Y> {
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
+    pub dimensions: [&'a mut f64; N],
+    time: f64,
+    intensity: &'a mut f32,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    _t: PhantomData<T>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    _y: PhantomData<Y>,
+}
+
+impl<'a, const N: usize, T, Y> NDPointMutRef<'a, N, T, Y> {
+    pub fn new(dimensions: [&'a mut f64; N], time: f64, intensity: &'a mut f32) -> Self {
+        Self {
+            dimensions,
+            time,
+            intensity,
+            _t: PhantomData,
+            _y: PhantomData,
+        }
+    }
+}
+
+impl<'a, const N: usize, T, Y> From<NDPointMutRef<'a, N, T, Y>> for NDPoint<N, T, Y> {
+    fn from(value: NDPointMutRef<'a, N, T, Y>) -> Self {
+        Self::new(value.dimensions.map(|d| *d), value.time, *value.intensity)
+    }
+}
+
+impl<'a, const N: usize, T, Y> PartialEq for NDPointMutRef<'a, N, T, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.dimensions == other.dimensions
+            && self.time == other.time
+            && self.intensity == other.intensity
+            && self._t == other._t
+            && self._y == other._y
+    }
+}
+
+impl<'a, const N: usize, T, Y> PartialOrd for NDPointMutRef<'a, N, T, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.dimensions.partial_cmp(&other.dimensions) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.time.partial_cmp(&other.time) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.intensity.partial_cmp(&other.intensity) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self._t.partial_cmp(&other._t) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self._y.partial_cmp(&other._y)
+    }
+}
+
+impl<'a, const N: usize, T, Y> CoordinateLike<Y> for NDPointMutRef<'a, N, T, Y> {
+    fn coordinate(&self) -> f64 {
+        self.time
+    }
+}
+
+impl<'a, const N: usize, T, Y> IntensityMeasurement for NDPointMutRef<'a, N, T, Y> {
+    fn intensity(&self) -> f32 {
+        *self.intensity
+    }
+}
+
+impl<'a, const N: usize, T, Y> IntensityMeasurementMut for NDPointMutRef<'a, N, T, Y> {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        &mut self.intensity
+    }
+}
+
+macro_rules! impl_dim_pt_ref {
+    ($pt:ident, $dim:ty, $idx:literal) => {
+        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<'a, N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate(&self) -> f64 {
+                *self.dimensions[$idx]
             }
         }
-        for (d, p) in self.dimensions.iter_mut().zip(point.dimensions.into_iter()) {
-            d.push(p)
+
+        impl<'a, const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<'a, N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                self.dimensions[$idx]
+            }
         }
+
+        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$crate::IonMobility>
+            for $pt<'a, N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate(&self) -> f64 {
+                *self.dimensions[$idx + 1]
+            }
+        }
+
+        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<'a, N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate(&self) -> f64 {
+                *self.dimensions[$idx]
+            }
+        }
+
+        impl<'a, const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<'a, N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate_mut(&mut self) -> &mut f64 {
+                self.dimensions[$idx]
+            }
+        }
+
+        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$crate::Time>
+            for $pt<'a, N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate(&self) -> f64 {
+                *self.dimensions[$idx + 1]
+            }
+        }
+    };
+}
+
+impl_dim_pt_ref!(NDPointMutRef, MZ, 0);
+impl_dim_pt_ref!(NDPointMutRef, Mass, 0);
+
+#[derive(Debug)]
+pub struct NDIter<'a, const N: usize, T, Y> {
+    dim_iters: [core::slice::Iter<'a, f64>; N],
+    time_iter: core::slice::Iter<'a, f64>,
+    intensity_iter: core::slice::Iter<'a, f32>,
+    _t: PhantomData<(T, Y)>,
+}
+
+impl<'a, const N: usize, T, Y> DoubleEndedIterator for NDIter<'a, N, T, Y> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some(time) = self.time_iter.next_back().copied() {
+            let intensity = self.intensity_iter.next_back().copied().unwrap();
+            let dimensions = self
+                .dim_iters
+                .each_mut()
+                .map(|i| i.next_back().copied().unwrap());
+            Some(NDPoint::new(dimensions, time, intensity))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, const N: usize, T, Y> FusedIterator for NDIter<'a, N, T, Y> {}
+
+impl<'a, const N: usize, T, Y> ExactSizeIterator for NDIter<'a, N, T, Y> {
+    fn len(&self) -> usize {
+        self.time_iter.len()
+    }
+}
+
+impl<'a, const N: usize, T, Y> Iterator for NDIter<'a, N, T, Y> {
+    type Item = NDPoint<N, T, Y>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(time) = self.time_iter.next().copied() {
+            let intensity = self.intensity_iter.next().copied().unwrap();
+            let dimensions = self
+                .dim_iters
+                .each_mut()
+                .map(|i| i.next().copied().unwrap());
+            Some(NDPoint::new(dimensions, time, intensity))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, const N: usize, T, Y> NDIter<'a, N, T, Y> {
+    pub fn new(
+        dim_iters: [core::slice::Iter<'a, f64>; N],
+        time_iter: core::slice::Iter<'a, f64>,
+        intensity_iter: core::slice::Iter<'a, f32>,
+    ) -> Self {
+        Self {
+            dim_iters,
+            time_iter,
+            intensity_iter,
+            _t: PhantomData,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NDIterMut<'a, const N: usize, T, Y> {
+    dim_iters: [core::slice::IterMut<'a, f64>; N],
+    time_iter: core::slice::Iter<'a, f64>,
+    intensity_iter: core::slice::IterMut<'a, f32>,
+    _t: PhantomData<(T, Y)>,
+}
+
+impl<'a, const N: usize, T, Y> DoubleEndedIterator for NDIterMut<'a, N, T, Y> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if let Some(time) = self.time_iter.next_back().copied() {
+            let intensity = self.intensity_iter.next_back().unwrap();
+            let dimensions = self.dim_iters.each_mut().map(|i| i.next_back().unwrap());
+            Some(Self::Item::new(dimensions, time, intensity))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, const N: usize, T, Y> FusedIterator for NDIterMut<'a, N, T, Y> {}
+
+impl<'a, const N: usize, T, Y> ExactSizeIterator for NDIterMut<'a, N, T, Y> {
+    fn len(&self) -> usize {
+        self.time_iter.len()
+    }
+}
+
+impl<'a, const N: usize, T, Y> Iterator for NDIterMut<'a, N, T, Y> {
+    type Item = NDPointMutRef<'a, N, T, Y>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(time) = self.time_iter.next().copied() {
+            let intensity = self.intensity_iter.next().unwrap();
+            let dimensions = self.dim_iters.each_mut().map(|i| i.next().unwrap());
+            Some(Self::Item::new(dimensions, time, intensity))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, const N: usize, T, Y> NDIterMut<'a, N, T, Y> {
+    pub fn new(
+        dim_iters: [core::slice::IterMut<'a, f64>; N],
+        time_iter: core::slice::Iter<'a, f64>,
+        intensity_iter: core::slice::IterMut<'a, f32>,
+    ) -> Self {
+        Self {
+            dim_iters,
+            time_iter,
+            intensity_iter,
+            _t: PhantomData,
+        }
+    }
+}
+
+macro_rules! impl_dim_feat {
+    ($pt:ident, $dim:ty, $idx:literal) => {
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate(&self) -> f64 {
+                self.weighted_average(&self.dimensions[$idx], &self.intensity)
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::IonMobility>
+            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        {
+            fn coordinate(&self) -> f64 {
+                self.weighted_average(&self.dimensions[$idx + 1], &self.intensity)
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate(&self) -> f64 {
+                self.weighted_average(&self.dimensions[$idx], &self.intensity)
+            }
+        }
+
+        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::Time>
+            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        {
+            fn coordinate(&self) -> f64 {
+                self.weighted_average(&self.dimensions[$idx + 1], &self.intensity)
+            }
+        }
+    };
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct NDFeature<const N: usize, T, Y> {
+    #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
+    dimensions: [Vec<f64>; N],
+    time: Vec<f64>,
+    intensity: Vec<f32>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    _t: PhantomData<T>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    _y: PhantomData<Y>,
+}
+
+impl<const N: usize, T, Y> NDFeatureLikeMut<T, Y> for NDFeature<N, T, Y> {
+    type PointMutRef<'a>
+        = NDPointMutRef<'a, N, T, Y>
+    where
+        Self: 'a;
+
+    fn iter_mut(&mut self) -> impl Iterator<Item = Self::PointMutRef<'_>> {
+        let dim_iter = self.dimensions.each_mut().map(|i| i.iter_mut());
+        let time_iter = self.time.iter();
+        let intensity_iter = self.intensity.iter_mut();
+        NDIterMut::new(dim_iter, time_iter, intensity_iter)
+    }
+
+    fn push<X: Into<Self::Point>>(&mut self, pt: X, time: f64) {
+        let mut pt = pt.into();
+        pt.time = time;
+        self.push_raw(pt);
+    }
+
+    fn push_raw(&mut self, point: Self::Point) {
+        self.push(point);
+    }
+}
+
+impl<const N: usize, T, Y> PartialOrd for NDFeature<N, T, Y> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.dimensions.partial_cmp(&other.dimensions) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.time.partial_cmp(&other.time) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.intensity.partial_cmp(&other.intensity) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self._t.partial_cmp(&other._t) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self._y.partial_cmp(&other._y)
+    }
+}
+
+impl<const N: usize, T, Y> PartialEq for NDFeature<N, T, Y> {
+    fn eq(&self, other: &Self) -> bool {
+        self.dimensions == other.dimensions
+            && self.time == other.time
+            && self.intensity == other.intensity
+            && self._t == other._t
+            && self._y == other._y
+    }
+}
+
+impl_dim_feat!(NDFeature, MZ, 0);
+impl_dim_feat!(NDFeature, Mass, 0);
+
+impl<const N: usize, T, Y> IntensityMeasurement for NDFeature<N, T, Y> {
+    fn intensity(&self) -> f32 {
+        self.intensity.iter().sum()
+    }
+}
+
+impl<const N: usize, T, Y> NDFeatureLike<T, Y> for NDFeature<N, T, Y> {
+    type Point = NDPoint<N, T, Y>;
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = Self::Point> {
+        let dim_iter = self.dimensions.each_ref().map(|i| i.iter());
+        let time_iter = self.time.iter();
+        let intensity_iter = self.intensity.iter();
+        NDIter::new(dim_iter, time_iter, intensity_iter)
+    }
+
+    fn coordinate(&self) -> Self::Point {
+        let dims = self.dimensions.each_ref().map(|d| {
+            self.weighted_average(d.as_slice(), &self.intensity)
+        });
+        let time = self.apex_time().unwrap_or_default();
+        let intensity = self.intensity();
+        Self::Point::new(dims, time, intensity)
+    }
+}
+
+impl<const N: usize, T, Y> NDFeature<N, T, Y> {
+    pub fn new(dimensions: [Vec<f64>; N], time: Vec<f64>, intensity: Vec<f32>) -> Self {
+        Self {
+            dimensions,
+            time,
+            intensity,
+            _t: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
+    pub fn into_inner(self) -> ([Vec<f64>; N], Vec<f64>, Vec<f32>) {
+        (self.dimensions, self.time, self.intensity)
+    }
+
+    fn iter(&self) -> NDIter<'_, N, T, Y> {
+        let dim_iter = self.dimensions.each_ref().map(|i| i.iter());
+        let time_iter = self.time.iter();
+        let intensity_iter = self.intensity.iter();
+        NDIter::new(dim_iter, time_iter, intensity_iter)
+    }
+
+    pub fn as_inner(&self) -> ([&[f64]; N], &[f64], &[f32]) {
+        (
+            self.dimensions.each_ref().map(|i| i.as_slice()),
+            &self.time,
+            &self.intensity,
+        )
+    }
+
+    pub fn len(&self) -> usize {
+        self.time.len()
     }
 
     pub(crate) fn sort_by_time(&mut self) {
@@ -87,11 +654,41 @@ impl<T, Y> NDFeature<T, Y> {
             }
         }
     }
+
+    pub fn push(&mut self, point: NDPoint<N, T, Y>) {
+        let needs_sort = if let Some(t) = self.time.last().copied() {
+            point.time < t
+        } else {
+            false
+        };
+
+        self.time.push(point.time);
+        self.intensity.push(point.intensity);
+        for (dim, val) in self.dimensions.iter_mut().zip(point.dimensions.into_iter()) {
+            dim.push(val)
+        }
+
+        if needs_sort {
+            self.sort_by_time();
+        }
+    }
 }
 
-impl<T, Y> CoArrayOps for NDFeature<T, Y> {}
+impl<const N: usize, T, Y> CoArrayOps for NDFeature<N, T, Y> {}
 
-impl<T, Y> TimeInterval<Y> for NDFeature<T, Y> {
+impl<const N: usize, T, Y> Default for NDFeature<N, T, Y> {
+    fn default() -> Self {
+        Self {
+            dimensions: core::array::from_fn(|_| Vec::new()),
+            time: Default::default(),
+            intensity: Default::default(),
+            _t: Default::default(),
+            _y: Default::default(),
+        }
+    }
+}
+
+impl<const N: usize, T, Y> TimeInterval<Y> for NDFeature<N, T, Y> {
     fn start_time(&self) -> Option<f64> {
         self.time.first().copied()
     }
@@ -113,7 +710,7 @@ impl<T, Y> TimeInterval<Y> for NDFeature<T, Y> {
     }
 }
 
-impl<T, Y> TimeArray<Y> for NDFeature<T, Y> {
+impl<const N: usize, T, Y> TimeArray<Y> for NDFeature<N, T, Y> {
     fn time_view(&self) -> &[f64] {
         &self.time
     }
@@ -123,430 +720,8 @@ impl<T, Y> TimeArray<Y> for NDFeature<T, Y> {
     }
 }
 
-impl<T, Y> IntensityMeasurement for NDFeature<T, Y> {
-    fn intensity(&self) -> f32 {
-        self.intensity.iter().sum()
-    }
-}
-
-impl<T, Y> FeatureLikeNDLike<T, Y> for NDFeature<T, Y> {
-    type Point = NDPoint<T, Y>;
-
-    fn len(&self) -> usize {
-        self.time.len()
-    }
-
-    fn iter(&self) -> impl Iterator<Item = Self::Point> {
-        NDIter::new(
-            self.dimensions.iter().map(|d| d.iter()).collect(),
-            self.time.iter(),
-            self.intensity.iter(),
-        )
-    }
-}
-
-macro_rules! impl_dim_feat {
-    ($pt:ident, $dim:ty, $idx:literal) => {
-        impl $crate::coordinate::CoordinateLike<$dim>
-            for $pt<($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate(&self) -> f64 {
-                self.weighted_average(&self.dimensions[$idx], &self.intensity)
-            }
-        }
-
-        impl $crate::coordinate::CoordinateLike<$crate::IonMobility>
-            for $pt<($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate(&self) -> f64 {
-                self.weighted_average(&self.dimensions[$idx + 1], &self.intensity)
-            }
-        }
-
-        impl $crate::coordinate::CoordinateLike<$dim>
-            for $pt<($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate(&self) -> f64 {
-                self.weighted_average(&self.dimensions[$idx], &self.intensity)
-            }
-        }
-
-        impl $crate::coordinate::CoordinateLike<$crate::Time>
-            for $pt<($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate(&self) -> f64 {
-                self.weighted_average(&self.dimensions[$idx + 1], &self.intensity)
-            }
-        }
-    };
-}
-
-impl<T, Y> PartialEq for NDFeature<T, Y> {
-    fn eq(&self, other: &Self) -> bool {
-        self.dimensions == other.dimensions
-            && self.time == other.time
-            && self.intensity == other.intensity
-            && self._t == other._t
-            && self._y == other._y
-    }
-}
-
-impl<T, Y> PartialOrd for NDFeature<T, Y> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        for (sd, od) in self.dimensions.iter().zip(other.dimensions.iter()) {
-            let comp = self
-                .weighted_average(sd, &self.intensity)
-                .total_cmp(&other.weighted_average(&od, &other.intensity));
-            if !comp.is_eq() {
-                return Some(comp);
-            }
-        }
-        match self.coordinate_y().total_cmp(&other.coordinate_y()) {
-            std::cmp::Ordering::Equal => {}
-            ord => return Some(ord),
-        }
-        match self.intensity.partial_cmp(&other.intensity) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self._t.partial_cmp(&other._t) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self._y.partial_cmp(&other._y)
-    }
-}
-
-impl_dim_feat!(NDFeature, MZ, 0);
-impl_dim_feat!(NDFeature, Mass, 0);
-
-#[derive(Debug, Default, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct NDPoint<T, Y> {
-    pub dimensions: Vec<f64>,
-    time: f64,
-    intensity: f32,
-    #[cfg_attr(feature = "serde", serde(skip))]
-    _t: PhantomData<T>,
-    #[cfg_attr(feature = "serde", serde(skip))]
-    _y: PhantomData<Y>,
-}
-
-impl<T, Y> NDPoint<T, Y> {
-    pub fn new(dims: Vec<f64>, time: f64, intensity: f32) -> Self {
-        Self {
-            dimensions: dims,
-            time,
-            intensity,
-            _t: PhantomData,
-            _y: PhantomData,
-        }
-    }
-}
-
-impl<T, Y> PartialEq for NDPoint<T, Y> {
-    fn eq(&self, other: &Self) -> bool {
-        self.dimensions == other.dimensions
-            && self.time == other.time
-            && self.intensity == other.intensity
-            && self._t == other._t
-            && self._y == other._y
-    }
-}
-
-impl<T, Y> PartialOrd for NDPoint<T, Y> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.dimensions.partial_cmp(&other.dimensions) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.time.partial_cmp(&other.time) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.intensity.partial_cmp(&other.intensity) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self._t.partial_cmp(&other._t) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self._y.partial_cmp(&other._y)
-    }
-}
-
-impl<T, Y> CoordinateLike<Y> for NDPoint<T, Y> {
-    fn coordinate(&self) -> f64 {
-        self.time
-    }
-}
-
-impl<T, Y> IntensityMeasurement for NDPoint<T, Y> {
-    fn intensity(&self) -> f32 {
-        self.intensity
-    }
-}
-
-pub struct NDIter<'a, T, Y> {
-    dims_iter: Vec<slice::Iter<'a, f64>>,
-    time_iter: slice::Iter<'a, f64>,
-    intensity_iter: slice::Iter<'a, f32>,
-    _t: PhantomData<T>,
-    _y: PhantomData<Y>,
-}
-
-impl<'a, T, Y> NDIter<'a, T, Y> {
-    pub fn new(
-        dims_iter: Vec<slice::Iter<'a, f64>>,
-        time_iter: slice::Iter<'a, f64>,
-        intensity_iter: slice::Iter<'a, f32>,
-    ) -> Self {
-        Self {
-            dims_iter,
-            time_iter,
-            intensity_iter,
-            _t: PhantomData,
-            _y: PhantomData,
-        }
-    }
-
-    fn read_next(&mut self) -> Option<NDPoint<T, Y>> {
-        let time = *self.time_iter.next()?;
-        let intensity = *self.intensity_iter.next()?;
-        let dims = self
-            .dims_iter
-            .iter_mut()
-            .map(|i| *i.next().unwrap())
-            .collect();
-        Some(NDPoint::new(dims, time, intensity))
-    }
-}
-
-impl<'a, T, Y> Iterator for NDIter<'a, T, Y> {
-    type Item = NDPoint<T, Y>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.read_next()
-    }
-
-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        let time = *self.time_iter.nth(n)?;
-        let intensity = *self.intensity_iter.nth(n)?;
-        let dims = self
-            .dims_iter
-            .iter_mut()
-            .map(|i| *i.nth(n).unwrap())
-            .collect();
-        Some(NDPoint::new(dims, time, intensity))
-    }
-}
-
-macro_rules! impl_dim_pt {
-    ($pt:ident, $dim:ty, $idx:literal) => {
-        impl $crate::coordinate::CoordinateLike<$dim>
-            for $pt<($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate(&self) -> f64 {
-                self.dimensions[$idx]
-            }
-        }
-
-        impl $crate::coordinate::CoordinateLike<$crate::IonMobility>
-            for $pt<($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate(&self) -> f64 {
-                self.dimensions[$idx + 1]
-            }
-        }
-
-        impl $crate::coordinate::CoordinateLike<$dim>
-            for $pt<($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate(&self) -> f64 {
-                self.dimensions[$idx]
-            }
-        }
-
-        impl $crate::coordinate::CoordinateLike<$crate::Time>
-            for $pt<($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate(&self) -> f64 {
-                self.dimensions[$idx + 1]
-            }
-        }
-    };
-}
-
-impl_dim_pt!(NDPoint, MZ, 0);
-impl_dim_pt!(NDPoint, Mass, 0);
-
-#[derive(Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
-pub struct NDPointMutRef<'a, T, Y> {
-    pub dimensions: Vec<&'a mut f64>,
-    time: f64,
-    intensity: &'a mut f32,
-    #[cfg_attr(feature = "serde", serde(skip))]
-    _t: PhantomData<T>,
-    #[cfg_attr(feature = "serde", serde(skip))]
-    _y: PhantomData<Y>,
-}
-
-impl<'a, T, Y> NDPointMutRef<'a, T, Y> {
-    pub fn new(dimensions: Vec<&'a mut f64>, time: f64, intensity: &'a mut f32) -> Self {
-        Self {
-            dimensions,
-            time,
-            intensity,
-            _t: PhantomData,
-            _y: PhantomData,
-        }
-    }
-}
-
-impl<'a, T, Y> From<NDPointMutRef<'a, T, Y>> for NDPoint<T, Y> {
-    fn from(value: NDPointMutRef<'a, T, Y>) -> Self {
-        Self::new(value.dimensions.into_iter().map(|d| *d).collect(), value.time, *value.intensity)
-    }
-}
-
-macro_rules! impl_dim_pt_ref {
-    ($pt:ident, $dim:ty, $idx:literal) => {
-        impl<'a> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<'a, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate(&self) -> f64 {
-                *self.dimensions[$idx]
-            }
-        }
-
-        impl<'a> $crate::coordinate::CoordinateLikeMut<$dim>
-            for $pt<'a, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate_mut(&mut self) -> &mut f64 {
-                self.dimensions[$idx]
-            }
-        }
-
-        impl<'a> $crate::coordinate::CoordinateLike<$crate::IonMobility>
-            for $pt<'a, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
-        {
-            fn coordinate(&self) -> f64 {
-                *self.dimensions[$idx + 1]
-            }
-        }
-
-        impl<'a> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<'a, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate(&self) -> f64 {
-                *self.dimensions[$idx]
-            }
-        }
-
-        impl<'a> $crate::coordinate::CoordinateLikeMut<$dim>
-            for $pt<'a, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate_mut(&mut self) -> &mut f64 {
-                self.dimensions[$idx]
-            }
-        }
-
-        impl<'a> $crate::coordinate::CoordinateLike<$crate::Time>
-            for $pt<'a, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
-        {
-            fn coordinate(&self) -> f64 {
-                *self.dimensions[$idx + 1]
-            }
-        }
-    };
-}
-
-impl_dim_pt_ref!(NDPointMutRef, MZ, 0);
-impl_dim_pt_ref!(NDPointMutRef, Mass, 0);
-
-impl<'a, T, Y> PartialEq for NDPointMutRef<'a, T, Y> {
-    fn eq(&self, other: &Self) -> bool {
-        self.dimensions == other.dimensions
-            && self.time == other.time
-            && self.intensity == other.intensity
-            && self._t == other._t
-            && self._y == other._y
-    }
-}
-
-impl<'a, T, Y> PartialOrd for NDPointMutRef<'a, T, Y> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.dimensions.partial_cmp(&other.dimensions) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.time.partial_cmp(&other.time) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self.intensity.partial_cmp(&other.intensity) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        match self._t.partial_cmp(&other._t) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
-        }
-        self._y.partial_cmp(&other._y)
-    }
-}
-
-impl<'a, T, Y> CoordinateLike<Y> for NDPointMutRef<'a, T, Y> {
-    fn coordinate(&self) -> f64 {
-        self.time
-    }
-}
-
-impl<'a, T, Y> IntensityMeasurement for NDPointMutRef<'a, T, Y> {
-    fn intensity(&self) -> f32 {
-        *self.intensity
-    }
-}
-
-impl<'a, T, Y> IntensityMeasurementMut for NDPointMutRef<'a, T, Y> {
-    fn intensity_mut(&mut self) -> &mut f32 {
-        &mut self.intensity
-    }
-}
-
-impl<'a, T, Y> FeatureLikeNDLikeMut<'a, T, Y> for NDFeature<T, Y>
-where
-    NDFeature<T, Y>: 'a,
-{
-    type PointMutRef = NDPointMutRef<'a, T, Y>;
-
-    fn iter_mut(&'a mut self) -> impl Iterator<Item = Self::PointMutRef> {
-        NDIterMut::new(
-            self.dimensions.iter_mut().map(|d| d.iter_mut()).collect(),
-            self.time.iter(),
-            self.intensity.iter_mut(),
-        )
-    }
-
-    fn push<X: Into<Self::Point>>(&mut self, pt: X, time: f64) {
-        let mut pt: Self::Point = pt.into();
-        pt.time = time;
-        self.push_raw(pt);
-    }
-
-    fn push_raw(&mut self, point: Self::Point) {
-        let needs_sort = !self.is_empty() && point.time < self.time.last().copied().unwrap();
-        unsafe { self.push_raw_unchecked(point) };
-        if needs_sort {
-            self.sort_by_time();
-        }
-    }
-}
-
-impl<T, Y> FromIterator<NDPoint<T, Y>> for NDFeature<T, Y> {
-    fn from_iter<I: IntoIterator<Item = NDPoint<T, Y>>>(iter: I) -> Self {
+impl<const N: usize, T, Y> FromIterator<NDPoint<N, T, Y>> for NDFeature<N, T, Y> {
+    fn from_iter<I: IntoIterator<Item = NDPoint<N, T, Y>>>(iter: I) -> Self {
         let mut this = Self::default();
         for pt in iter {
             this.push_raw(pt);
@@ -555,86 +730,161 @@ impl<T, Y> FromIterator<NDPoint<T, Y>> for NDFeature<T, Y> {
     }
 }
 
-impl<T, Y> Extend<NDPoint<T, Y>> for NDFeature<T, Y> {
-    fn extend<I: IntoIterator<Item = NDPoint<T, Y>>>(&mut self, iter: I) {
+impl<const N: usize, T, Y> Extend<NDPoint<N, T, Y>> for NDFeature<N, T, Y> {
+    fn extend<I: IntoIterator<Item = NDPoint<N, T, Y>>>(&mut self, iter: I) {
         for pt in iter {
             self.push_raw(pt);
         }
     }
 }
 
-pub struct NDIterMut<'a, T, Y> {
-    dims_iter: Vec<slice::IterMut<'a, f64>>,
-    time_iter: slice::Iter<'a, f64>,
-    intensity_iter: slice::IterMut<'a, f32>,
-    _t: PhantomData<T>,
-    _y: PhantomData<Y>,
+// -------- Specific supporting specializations: m/z + ion mobility ---------------
+
+pub struct IMMZPeakIter<'a> {
+    iter: NDIter<'a, 2, (MZ, IonMobility), Time>,
 }
 
-impl<'a, T, Y> NDIterMut<'a, T, Y> {
-    pub fn new(
-        dims_iter: Vec<slice::IterMut<'a, f64>>,
-        time_iter: slice::Iter<'a, f64>,
-        intensity_iter: slice::IterMut<'a, f32>,
-    ) -> Self {
-        Self {
-            dims_iter,
-            time_iter,
-            intensity_iter,
-            _t: PhantomData,
-            _y: PhantomData,
-        }
-    }
+impl<'a> FusedIterator for IMMZPeakIter<'a> {}
 
-    fn read_next(&mut self) -> Option<NDPointMutRef<'a, T, Y>> {
-        let time = *self.time_iter.next()?;
-        let intensity = self.intensity_iter.next()?;
-        let dims = self
-            .dims_iter
-            .iter_mut()
-            .map(|i| i.next().unwrap())
-            .collect();
-        Some(NDPointMutRef::new(dims, time, intensity))
+impl<'a> ExactSizeIterator for IMMZPeakIter<'a> {
+    fn len(&self) -> usize {
+        <NDIter<'a, 2, (MZ, IonMobility), Time> as ExactSizeIterator>::len(&self.iter)
     }
 }
 
-impl<'a, T, Y> Iterator for NDIterMut<'a, T, Y> {
-    type Item = NDPointMutRef<'a, T, Y>;
+impl<'a> Iterator for IMMZPeakIter<'a> {
+    type Item = (IonMobilityAwareCentroidPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.read_next()
+        self.iter.next().map(|pt| {
+            (
+                IonMobilityAwareCentroidPeak::new(pt.mz(), pt.ion_mobility(), pt.intensity(), 0),
+                pt.time,
+            )
+        })
     }
+}
 
-    fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        let time = *self.time_iter.nth(n)?;
-        let intensity = self.intensity_iter.nth(n)?;
-        let dims = self
-            .dims_iter
-            .iter_mut()
-            .map(|i| i.nth(n).unwrap())
-            .collect();
-        Some(NDPointMutRef::new(dims, time, intensity))
+impl<'a> IMMZPeakIter<'a> {
+    pub fn new(iter: NDIter<'a, 2, (MZ, IonMobility), Time>) -> Self {
+        Self { iter }
+    }
+}
+
+impl AsPeakIter for NDFeature<2, (MZ, IonMobility), Time> {
+    type Peak = IonMobilityAwareCentroidPeak;
+
+    type Iter<'a>
+        = IMMZPeakIter<'a>
+    where
+        Self: 'a;
+
+    fn iter_peaks(&self) -> Self::Iter<'_> {
+        IMMZPeakIter::new(self.iter())
+    }
+}
+
+impl BuildFromPeak<IonMobilityAwareCentroidPeak> for NDFeature<2, (MZ, IonMobility), Time> {
+    fn push_peak(&mut self, value: IonMobilityAwareCentroidPeak, time: f64) {
+        self.push_raw(NDPoint::new(
+            [value.mz, value.ion_mobility],
+            time,
+            value.intensity,
+        ))
+    }
+}
+
+// -------- Specific supporting specializations: mass + ion mobility ---------------
+
+use super::charged::ChargedFeatureWrapper;
+
+impl<const N: usize, T, Y> Index<usize> for Charged<NDPoint<N, T, Y>> {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.0.index(index)
+    }
+}
+
+pub struct IMMassPeakIter<'a> {
+    iter: NDIter<'a, 2, (Mass, IonMobility), Time>,
+    charge: i32,
+}
+
+impl<'a> Iterator for IMMassPeakIter<'a> {
+    type Item = (IonMobilityAwareDeconvolutedPeak, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|pt| {
+            (
+                IonMobilityAwareDeconvolutedPeak::new(
+                    pt.neutral_mass(),
+                    pt.ion_mobility(),
+                    self.charge,
+                    pt.intensity(),
+                    0,
+                ),
+                pt.time,
+            )
+        })
+    }
+}
+
+impl<'a> IMMassPeakIter<'a> {
+    pub fn new(iter: NDIter<'a, 2, (Mass, IonMobility), Time>, charge: i32) -> Self {
+        Self { iter, charge }
+    }
+}
+
+impl AsPeakIter
+    for ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, IonMobility), Time>>
+{
+    type Peak = IonMobilityAwareDeconvolutedPeak;
+
+    type Iter<'a>
+        = IMMassPeakIter<'a>
+    where
+        Self: 'a;
+
+    fn iter_peaks(&self) -> Self::Iter<'_> {
+        let (inner, charge) = self.as_inner();
+        IMMassPeakIter::new(inner.iter(), charge)
+    }
+}
+
+impl BuildFromPeak<IonMobilityAwareDeconvolutedPeak>
+    for ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, IonMobility), Time>>
+{
+    fn push_peak(&mut self, value: IonMobilityAwareDeconvolutedPeak, time: f64) {
+        self.push_raw(Charged::new(
+            NDPoint::new(
+                [value.neutral_mass(), value.ion_mobility()],
+                time,
+                value.intensity(),
+            ),
+            value.charge(),
+        ));
     }
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::{
         coordinate::{IonMobilityLocated, TimeLocated},
-        IonMobility, MZLocated, Time,
+        prelude::*,
+        IonMobility, MZLocated, Time, MZ,
     };
-
-    use super::*;
 
     #[test]
     fn test_create() {
-        let pt = NDPoint::<(MZ, IonMobility), Time>::new(vec![50.0, 0.5], 12.6, 1000.0);
+        let pt = NDPoint::<2, (MZ, IonMobility), Time>::new([50.0, 0.5], 12.6, 1000.0);
         assert_eq!(pt.time(), 12.6);
         assert_eq!(pt.mz(), 50.0);
         assert_eq!(pt.ion_mobility(), 0.5);
     }
 
-    fn test_creation_behavior(f: &NDFeature<(MZ, IonMobility), Time>) {
+    fn test_creation_behavior(f: &NDFeature<2, (MZ, IonMobility), Time>) {
         assert_eq!(f.len(), 3);
         assert!(
             (f.ion_mobility() - 0.498666).abs() < 1e-3,
@@ -658,13 +908,13 @@ mod test {
 
     #[test]
     fn test_create_feature() {
-        let points: Vec<NDPoint<(MZ, IonMobility), Time>> = vec![
-            NDPoint::new(vec![50.0, 0.5], 12.6, 1000.0),
-            NDPoint::new(vec![50.01, 0.49], 12.7, 1200.0),
-            NDPoint::new(vec![50.0, 0.51], 12.9, 800.0),
+        let points: Vec<NDPoint<2, (MZ, IonMobility), Time>> = vec![
+            NDPoint::new([50.0, 0.5], 12.6, 1000.0),
+            NDPoint::new([50.01, 0.49], 12.7, 1200.0),
+            NDPoint::new([50.0, 0.51], 12.9, 800.0),
         ];
 
-        let f: NDFeature<_, _> = points.clone().into_iter().collect();
+        let f: NDFeature<2, _, _> = points.clone().into_iter().collect();
         test_creation_behavior(&f);
 
         let mut f2 = NDFeature::default();

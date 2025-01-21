@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops::RangeBounds};
+use std::{collections::VecDeque, ops::{Index, RangeBounds}};
 
 use crate::{coordinate::CoordinateLike, CoordinateRange, IntensityMeasurement, IntensityMeasurementMut};
 
@@ -84,11 +84,11 @@ pub trait TimeArray<T> : TimeInterval<T> {
 }
 
 /// Iterate over a [`FeatureLike`] type, producing `(peak, time)` pairs
-pub trait PeakSeries<'a> {
+pub trait AsPeakIter {
     type Peak;
-    type Iter: Iterator<Item = (Self::Peak, f64)>;
+    type Iter<'a>: Iterator<Item = (Self::Peak, f64)> where Self: 'a;
 
-    fn iter_peaks(&'a self) -> Self::Iter;
+    fn iter_peaks(&self) -> Self::Iter<'_>;
 }
 
 /// Build a [`FeatureLikeMut`] type from a sequence of `(peak, time)` pairs
@@ -105,6 +105,10 @@ pub trait BuildFromPeak<T> {
     }
 }
 
+/// A marker trait indicating that a feature type can be converted to and from a sequence of peaks
+pub trait PeakSeries: BuildFromPeak<Self::Peak> + AsPeakIter {}
+
+impl<T, F: AsPeakIter<Peak=T> + BuildFromPeak<T>> PeakSeries for F {}
 
 impl<'a, T, U: TimeArray<T>> TimeArray<T> for &'a U {
     fn time_view(&self) -> &[f64] {
@@ -345,13 +349,18 @@ pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
     }
 }
 
-pub trait FeatureLikeNDLike<T, Y>: IntensityMeasurement + TimeInterval<Y> {
-    type Point: IntensityMeasurement + CoordinateLike<Y>;
+pub trait NDFeatureLike<T, Y>: IntensityMeasurement + TimeInterval<Y> + PartialOrd {
+    type Point: IntensityMeasurement + CoordinateLike<Y> + Index<usize, Output = f64>;
+
+    /// The centroid
+    fn coordinate(&self) -> Self::Point;
 
     /// The number of points in the feature
     fn len(&self) -> usize;
+
     /// Create an iterator that yields (x, y, intensity) references
     fn iter(&self) -> impl Iterator<Item = Self::Point>;
+
     /// Check if the feature has any points in it
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -383,15 +392,15 @@ pub trait FeatureLikeNDLike<T, Y>: IntensityMeasurement + TimeInterval<Y> {
     }
 }
 
-pub trait FeatureLikeNDLikeMut<'a, T, Y>: FeatureLikeNDLike<T, Y> {
-    type PointMutRef: IntensityMeasurement + IntensityMeasurementMut + CoordinateLike<Y>;
+pub trait NDFeatureLikeMut<T, Y>: NDFeatureLike<T, Y> {
+    type PointMutRef<'a>: IntensityMeasurement + IntensityMeasurementMut + CoordinateLike<Y> where Self: 'a;
 
     /// Create an iterator that yields (x, y, intensity) mutable references
     ///
     /// # Safety
     /// If the caller mutates the time dimension (slot 1), they are responsible for
     /// maintaining sorted order.
-    fn iter_mut(&'a mut self) -> impl Iterator<Item = Self::PointMutRef>;
+    fn iter_mut(&mut self) -> impl Iterator<Item = Self::PointMutRef<'_>>;
 
     /// Add a new peak-like reference to the feature at a given y "time" coordinate. If the "time"
     /// is not in sorted order, it should automatically re-sort.
@@ -402,23 +411,23 @@ pub trait FeatureLikeNDLikeMut<'a, T, Y>: FeatureLikeNDLike<T, Y> {
     fn push_raw(&mut self, point: Self::Point);
 
     /// Get a mutable reference to feature data at a specified index
-    fn at_mut(&'a mut self, index: usize) -> Option<Self::PointMutRef> {
+    fn at_mut(&mut self, index: usize) -> Option<Self::PointMutRef<'_>> {
         self.iter_mut().nth(index)
     }
 
     /// Get a mutable reference to feature data at the first index, if it exists
-    fn first_mut(&'a mut self) -> Option<Self::PointMutRef> {
+    fn first_mut(&mut self) -> Option<Self::PointMutRef<'_>> {
         self.at_mut(0)
     }
 
     /// Get a mutable reference to feature data at the last index, if it exists
-    fn last_mut(&'a mut self) -> Option<Self::PointMutRef> {
+    fn last_mut(&mut self) -> Option<Self::PointMutRef<'_>> {
         self.at_mut(self.len().saturating_sub(1))
     }
 
     /// Get a mutable reference to feature data at a specified time. Analogous
     /// to combining [`TimeInterval::find_time`] with [`FeatureLikeMut::at_mut`]
-    fn at_time_mut(&'a mut self, time: f64) -> Option<Self::PointMutRef> {
+    fn at_time_mut(&mut self, time: f64) -> Option<Self::PointMutRef<'_>> {
         if let (Some(ix), _) = self.find_time(time) {
             self.at_mut(ix)
         } else {

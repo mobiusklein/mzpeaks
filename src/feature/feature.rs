@@ -12,7 +12,7 @@ use crate::{CentroidPeak, IonMobility, Time, MZ};
 
 use super::traits::{BuildFromPeak, CoArrayOps, FeatureLike, FeatureLikeMut, SplittableFeatureLike};
 use super::util::{NonNan, EMPTY_X, EMPTY_Y, EMPTY_Z};
-use super::{PeakSeries, TimeArray, TimeInterval};
+use super::{AsPeakIter, TimeArray, TimeInterval};
 
 /// A basic implementation of [`FeatureLike`] and [`FeatureLikeMut`]
 #[derive(Debug, Default, Clone)]
@@ -306,12 +306,11 @@ impl<Y> Feature<MZ, Y> {
     }
 }
 
-impl<'a, Y: 'a> PeakSeries<'a> for Feature<MZ, Y> {
+impl<Y> AsPeakIter for Feature<MZ, Y> {
     type Peak = CentroidPeak;
+    type Iter<'a> = MZPeakIter<'a, Y> where Self: 'a;
 
-    type Iter = MZPeakIter<'a, Y>;
-
-    fn iter_peaks(&'a self) -> Self::Iter {
+    fn iter_peaks(&self) -> Self::Iter<'_> {
         self.iter_peaks()
     }
 }

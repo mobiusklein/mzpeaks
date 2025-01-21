@@ -4,14 +4,14 @@
 //! is given by [`FeatureMap`].
 //!
 
-use crate::{feature::FeatureLike, CoordinateLike, Tolerance};
+use crate::{
+    feature::{FeatureLike, NDFeatureLike},
+    CoordinateLike, Tolerance,
+};
 use std::{
     marker::PhantomData,
-    ops::{self, Range},
+    ops::{self, Index, Range},
 };
-
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
 
 /// A two dimensional feature collection where features are sorted by the `X` dimension
 /// and each feature is internally sorted by the `Y` dimension.
@@ -222,7 +222,7 @@ pub struct FeatureMap<X, Y, T: FeatureLike<X, Y>> {
     _y: PhantomData<Y>,
 }
 
-impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
+impl<X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
     /// Create a new [`FeatureMap`] from an existing `Vec<T>` and sorts
     /// the newly created structure to ensure it is ordered by coordinate `X`
     pub fn new(features: Vec<T>) -> Self {
@@ -247,6 +247,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         FeatureMapView::new(&self.features)
     }
 
+    /// Create a new empty feature map
     pub fn empty() -> Self {
         Self {
             features: Vec::new(),
@@ -281,7 +282,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
     }
 
     /// Iterate over mutable reference to features
-    pub fn iter_mut(&'a mut self) -> std::slice::IterMut<'a, T> {
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
         self.features.iter_mut()
     }
 
@@ -291,7 +292,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
     }
 
     /// Extract a subset of this [`FeatureMap`] that overlap the specified `y` coordinate
-    pub fn spanning(&'a self, y: f64) -> FeatureMap<X, Y, &'a T> {
+    pub fn spanning(&'_ self, y: f64) -> FeatureMap<X, Y, &'_ T> {
         let subset: Vec<_> = self.iter().filter(|f| f.spans(y)).collect();
         FeatureMap::wrap(subset)
     }
@@ -453,17 +454,52 @@ impl<X, Y, T: FeatureLike<X, Y>> IntoIterator for FeatureMap<X, Y, T> {
 }
 
 #[cfg(feature = "rayon")]
-impl<X: Send + Sync, Y: Send + Sync, T: FeatureLike<X, Y> + Sync + Send> FeatureMap<X, Y, T> {
-    pub fn par_iter(&self) -> rayon::slice::Iter<'_, T> {
-        self.features.par_iter()
+mod parallel {
+    use super::*;
+    use rayon::prelude::*;
+
+    impl<X: Send + Sync, Y: Send + Sync, T: FeatureLike<X, Y> + Sync + Send> FeatureMap<X, Y, T> {
+        pub fn par_iter(&self) -> rayon::slice::Iter<'_, T> {
+            self.features.par_iter()
+        }
+
+        pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, T> {
+            self.features.par_iter_mut()
+        }
+
+        pub fn into_par_iter(self) -> rayon::vec::IntoIter<T> {
+            self.features.into_par_iter()
+        }
+
+        pub fn par_sort(&mut self) {
+            self.features.par_sort_by(|x, y| x.partial_cmp(y).unwrap())
+        }
     }
 
-    pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, T> {
-        self.features.par_iter_mut()
+    impl<X: Send + Sync, Y: Send + Sync, T: FeatureLike<X, Y> + Sync + Send> ParallelExtend<T>
+        for FeatureMap<X, Y, T>
+    {
+        fn par_extend<I>(&mut self, par_iter: I)
+        where
+            I: IntoParallelIterator<Item = T>,
+        {
+            self.features.par_extend(par_iter);
+            self.par_sort();
+        }
     }
 
-    pub fn into_par_iter(self) -> rayon::vec::IntoIter<T> {
-        self.features.into_par_iter()
+    impl<X: Send + Sync, Y: Send + Sync, T: FeatureLike<X, Y> + Sync + Send> FromParallelIterator<T>
+        for FeatureMap<X, Y, T>
+    {
+        fn from_par_iter<I>(par_iter: I) -> Self
+        where
+            I: IntoParallelIterator<Item = T>,
+        {
+            let features: Vec<_> = par_iter.into_par_iter().collect();
+            let mut this = Self::wrap(features);
+            this.par_sort();
+            this
+        }
     }
 }
 
@@ -551,6 +587,429 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> IntoIterator for FeatureMapView<'a, X, Y, T
     }
 }
 
+/// An N-dimensional feature collection where features are sorted by the `X` dimension
+/// and each feature is internally sorted by the `Y` dimension.
+pub trait NDFeatureMapLike<X, Y, T: NDFeatureLike<X, Y> + PartialOrd>:
+    ops::Index<usize, Output = T>
+{
+    fn search_by(&self, query: f64) -> Result<usize, usize>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Implement index access
+    fn get_item(&self, i: usize) -> &T;
+    fn get_slice(&self, i: ops::Range<usize>) -> &[T];
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
+    where
+        T: 'a;
+
+    #[inline]
+    fn _closest_feature(&self, query: f64, error_tolerance: Tolerance, i: usize) -> Option<usize> {
+        if i >= self.len() {
+            return None;
+        }
+        let mut j = i;
+        let mut best = j;
+        let mut best_err = error_tolerance
+            .call(self.get_item(j).coordinate()[0], query)
+            .abs();
+        let n = self.len();
+        let tol = error_tolerance.tol();
+        // search backwards
+        while j > 0 && j < n {
+            let err = error_tolerance
+                .call(self.get_item(j).coordinate()[0], query)
+                .abs();
+            if err < best_err && err < tol {
+                best_err = err;
+                best = j;
+            } else if err > best_err {
+                break;
+            }
+            j -= 1;
+        }
+        j = i;
+        // search forwards
+        while j < n {
+            let err = error_tolerance
+                .call(self.get_item(j).coordinate()[0], query)
+                .abs();
+            if err < best_err && err < tol {
+                best_err = err;
+                best = j;
+            } else if err > best_err {
+                break;
+            }
+            j += 1;
+        }
+        if best_err > tol {
+            return None;
+        }
+        Some(best)
+    }
+
+    #[inline]
+    /// Find the nearest index for `query` within `error_tolerance` in
+    /// this feature collection, or `None`.
+    fn search(&self, query: f64, error_tolerance: Tolerance) -> Option<usize> {
+        let lower_bound = error_tolerance.bounds(query).0;
+
+        match self.search_by(lower_bound) {
+            Ok(j) => self._closest_feature(query, error_tolerance, j),
+            Err(j) => self._closest_feature(query, error_tolerance, j),
+        }
+    }
+
+    #[inline]
+    /// Return the feature nearest to `query` within `error_tolerance` in
+    /// this feature collection, or `None`.
+    fn has_feature(&self, query: f64, error_tolerance: Tolerance) -> Option<&T> {
+        return match self.search(query, error_tolerance) {
+            Some(j) => Some(self.get_item(j)),
+            None => None,
+        };
+    }
+
+    #[inline]
+    /// Return the index range containing all features between `low` and `high` coordinates within
+    /// `error_tolerance`.
+    ///
+    /// See [`FeatureMapLike::between`] for that retrieves these features.
+    fn indices_between(&self, low: f64, high: f64, error_tolerance: Tolerance) -> Range<usize> {
+        let lower_bound = error_tolerance.bounds(low).0;
+        let upper_bound = error_tolerance.bounds(high).1;
+
+        let n = self.len();
+        if n == 0 {
+            return 0..0;
+        }
+
+        let mut lower_index = match self.search_by(lower_bound) {
+            Ok(j) => j,
+            Err(j) => j,
+        };
+
+        let mut upper_index = match self.search_by(upper_bound) {
+            Ok(j) => j,
+            Err(j) => j,
+        };
+
+        if lower_index < n && self[lower_index].coordinate()[0] < lower_bound {
+            lower_index += 1;
+        }
+
+        if upper_index < n && upper_index > 0 && self[upper_index].coordinate()[0] > upper_bound {
+            upper_index -= 1;
+        }
+
+        if upper_index < n {
+            upper_index += 1;
+        }
+
+        if lower_index >= n {
+            return 0..0;
+        }
+
+        lower_index..upper_index
+    }
+
+    #[inline]
+    /// Return a slice containing all features between `low` and `high` coordinates within
+    /// `error_tolerance`.
+    fn between(&self, low: f64, high: f64, error_tolerance: Tolerance) -> &[T] {
+        let indices = self.indices_between(low, high, error_tolerance);
+        let subset = self.get_slice(indices);
+        subset
+    }
+
+    #[inline]
+    /// Find all feature indices which could match `query` within `error_tolerance` units.
+    ///
+    /// See [`FeatureMapLike::all_features_for`] for the function that retrieves these features.
+    fn all_indices_for(&self, query: f64, error_tolerance: Tolerance) -> Range<usize> {
+        let (lower_bound, upper_bound) = error_tolerance.bounds(query);
+
+        let n = self.len();
+        if n == 0 {
+            return 0..0;
+        }
+
+        let mut lower_index = match self.search_by(lower_bound) {
+            Ok(j) => j,
+            Err(j) => j.min(n - 1),
+        };
+
+        let checkpoint = lower_index;
+
+        while lower_index < n && lower_index != 0 {
+            if self[lower_index - 1].coordinate()[0] > lower_bound {
+                lower_index -= 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut upper_index = checkpoint;
+
+        while upper_index < n - 1 {
+            if self[upper_index + 1].coordinate()[0] < upper_bound {
+                upper_index += 1;
+            } else {
+                break;
+            }
+        }
+
+        let v = self.get_item(lower_index).coordinate()[0];
+        if v <= lower_bound || v >= upper_bound {
+            lower_index += 1;
+        }
+
+        lower_index..upper_index + 1
+    }
+
+    #[inline]
+    /// Find all features which could match `query` within `error_tolerance` units
+    fn all_features_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
+        let c = self.all_indices_for(query, error_tolerance);
+        return self.get_slice(c);
+    }
+}
+
+/// A mutable kind of [`FeatureMapLike`] which new features can be added to.
+pub trait NDFeatureMapLikeMut<X, Y, T: NDFeatureLike<X, Y> + PartialOrd>:
+    NDFeatureMapLike<X, Y, T>
+{
+    /// Add `feature` to the collection, maintaining sort order and feature
+    /// indexing.
+    fn push(&mut self, feature: T);
+
+    /// Sort the collection, updating the feature indexing.
+    fn sort(&mut self);
+}
+
+#[derive(Debug, Default)]
+pub struct NDFeatureMap<X, Y, T: NDFeatureLike<X, Y>> {
+    features: Vec<T>,
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>,
+}
+
+impl<X, Y, T: NDFeatureLike<X, Y>> NDFeatureMap<X, Y, T> {
+    /// Create a new [`FeatureMap`] from an existing `Vec<T>` and sorts
+    /// the newly created structure to ensure it is ordered by coordinate `X`
+    pub fn new(features: Vec<T>) -> Self {
+        let mut inst = Self::wrap(features);
+        inst.sort();
+        inst
+    }
+
+    pub fn first(&self) -> Option<&T> {
+        self.features.first()
+    }
+
+    pub fn last(&self) -> Option<&T> {
+        self.features.last()
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        &self.features
+    }
+
+    /// Create a new empty feature map
+    pub fn empty() -> Self {
+        Self {
+            features: Vec::new(),
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
+    /// Create a new [`FeatureMap`] from an existing `Vec<T>`, but does not actively
+    /// sort the collection. It is up to the caller to ensure that the provided `Vec`
+    /// is sorted or that it will be sorted prior to any of its search functionality
+    /// is used.
+    pub fn wrap(features: Vec<T>) -> Self {
+        Self {
+            features,
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.features.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.features.is_empty()
+    }
+
+    /// Iterate over references to features
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.features.iter()
+    }
+
+    /// Iterate over mutable reference to features
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
+        self.features.iter_mut()
+    }
+
+    /// Extract a subset of this [`NDFeatureMap`] that overlap the specified `y` coordinate
+    pub fn spanning(&self, y: f64) -> NDFeatureMap<X, Y, T>
+    where
+        T: Clone,
+    {
+        let subset: Vec<_> = self.iter().filter(|f| f.spans(y)).cloned().collect();
+        NDFeatureMap::wrap(subset)
+    }
+
+    pub fn search_by(&self, query: f64) -> Result<usize, usize> {
+        self.features
+            .binary_search_by(|feature| feature.coordinate()[0].total_cmp(&query))
+    }
+
+    pub fn from_iter<I: Iterator<Item = T>>(iter: I, sort: bool) -> Self {
+        let features = iter.collect();
+        if sort {
+            Self::new(features)
+        } else {
+            Self::wrap(features)
+        }
+    }
+
+    pub fn earliest_time(&self) -> Option<f64> {
+        self.features
+            .iter()
+            .fold(Option::<f64>::None, |prev, feat| {
+                match (prev, feat.start_time()) {
+                    (Some(prev), Some(cur)) => Some(prev.min(cur)),
+                    (None, Some(cur)) => Some(cur),
+                    (_, _) => prev,
+                }
+            })
+    }
+
+    pub fn latest_time(&self) -> Option<f64> {
+        self.features
+            .iter()
+            .fold(Option::<f64>::None, |prev, feat| {
+                match (prev, feat.start_time()) {
+                    (Some(prev), Some(cur)) => Some(prev.max(cur)),
+                    (None, Some(cur)) => Some(cur),
+                    (_, _) => prev,
+                }
+            })
+    }
+}
+
+impl<X, Y, T: NDFeatureLike<X, Y>> Index<usize> for NDFeatureMap<X, Y, T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.features[index]
+    }
+}
+
+impl<X, Y, T: NDFeatureLike<X, Y>> NDFeatureMapLike<X, Y, T> for NDFeatureMap<X, Y, T> {
+    fn search_by(&self, query: f64) -> Result<usize, usize> {
+        self.search_by(query)
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+
+    fn get_item(&self, i: usize) -> &T {
+        &self.features[i]
+    }
+
+    fn get_slice(&self, i: ops::Range<usize>) -> &[T] {
+        &self.features[i]
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
+    where
+        T: 'a,
+    {
+        self.iter()
+    }
+}
+
+impl<X, Y, T: NDFeatureLike<X, Y>> NDFeatureMapLikeMut<X, Y, T> for NDFeatureMap<X, Y, T> {
+    fn push(&mut self, feature: T) {
+        if self.is_empty() {
+            self.features.push(feature)
+        } else {
+            let is_tail =
+                self.features.last().as_ref().unwrap().coordinate() <= feature.coordinate();
+            self.features.push(feature);
+            if !is_tail {
+                self.sort();
+            }
+        }
+    }
+
+    fn sort(&mut self) {
+        self.features.sort_by(|x, y| x.partial_cmp(y).unwrap())
+    }
+}
+
+#[cfg(feature = "rayon")]
+mod parallel_nd {
+    use super::*;
+    use rayon::prelude::*;
+
+    impl<X: Send + Sync, Y: Send + Sync, T: NDFeatureLike<X, Y> + Sync + Send> NDFeatureMap<X, Y, T> {
+        pub fn par_iter(&self) -> rayon::slice::Iter<'_, T> {
+            self.features.par_iter()
+        }
+
+        pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, T> {
+            self.features.par_iter_mut()
+        }
+
+        pub fn into_par_iter(self) -> rayon::vec::IntoIter<T> {
+            self.features.into_par_iter()
+        }
+
+        pub fn par_sort(&mut self) {
+            self.features.par_sort_by(|x, y| x.partial_cmp(y).unwrap())
+        }
+    }
+
+    impl<X: Send + Sync, Y: Send + Sync, T: NDFeatureLike<X, Y> + Sync + Send> ParallelExtend<T>
+        for NDFeatureMap<X, Y, T>
+    {
+        fn par_extend<I>(&mut self, par_iter: I)
+        where
+            I: IntoParallelIterator<Item = T>,
+        {
+            self.features.par_extend(par_iter);
+            self.par_sort();
+        }
+    }
+
+    impl<X: Send + Sync, Y: Send + Sync, T: NDFeatureLike<X, Y> + Sync + Send>
+        FromParallelIterator<T> for NDFeatureMap<X, Y, T>
+    {
+        fn from_par_iter<I>(par_iter: I) -> Self
+        where
+            I: IntoParallelIterator<Item = T>,
+        {
+            let features: Vec<_> = par_iter.into_par_iter().collect();
+            let mut this = Self::wrap(features);
+            this.par_sort();
+            this
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {

@@ -20,9 +20,6 @@ use std::ops::{self, Range};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
-
 use crate::mass_error::Tolerance;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
@@ -673,19 +670,50 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     }
 }
 
-
 #[cfg(feature = "rayon")]
-impl<P: IndexedCoordinate<C> + Sync + Send, C: Sync + Send> PeakSetVec<P, C> {
-    pub fn par_iter(&self) -> rayon::slice::Iter<'_, P> where P: Send + Sync, C: Send + Sync {
-        self.peaks.par_iter()
+mod parallel {
+    use rayon::prelude::*;
+    use super::*;
+
+    impl<P: IndexedCoordinate<C> + Sync + Send, C: Sync + Send> ParallelExtend<P> for PeakSetVec<P, C> {
+        fn par_extend<I>(&mut self, par_iter: I)
+        where
+            I: IntoParallelIterator<Item = P> {
+            self.peaks.par_extend(par_iter);
+            self.par_sort();
+        }
     }
 
-    pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, P> {
-        self.peaks.par_iter_mut()
+    impl<P: IndexedCoordinate<C> + Sync + Send, C: Sync + Send> FromParallelIterator<P> for PeakSetVec<P, C> {
+        fn from_par_iter<I>(par_iter: I) -> Self
+        where
+            I: IntoParallelIterator<Item = P> {
+            let peaks: Vec<_> = par_iter.into_par_iter().collect();
+            let mut this = Self::wrap(peaks);
+            this.par_sort();
+            this
+        }
     }
 
-    pub fn into_par_iter(self) -> rayon::vec::IntoIter<P> {
-        self.peaks.into_par_iter()
+    impl<P: IndexedCoordinate<C> + Sync + Send, C: Sync + Send> PeakSetVec<P, C> {
+        pub fn par_iter(&self) -> rayon::slice::Iter<'_, P> where P: Send + Sync, C: Send + Sync {
+            self.peaks.par_iter()
+        }
+
+        pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, P> {
+            self.peaks.par_iter_mut()
+        }
+
+        pub fn into_par_iter(self) -> rayon::vec::IntoIter<P> {
+            self.peaks.into_par_iter()
+        }
+
+        pub fn par_sort(&mut self) {
+            self.peaks.par_sort_by(|a, b| a.partial_cmp(b).unwrap());
+            self.peaks.par_iter_mut().enumerate().for_each(|(i, p)| {
+                p.set_index(i as IndexType);
+            });
+        }
     }
 }
 

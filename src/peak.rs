@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::coordinate::{CoordinateLike, IndexType, IndexedCoordinate, Mass, MZ};
-use crate::{implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner};
+use crate::{implement_centroidlike_inner, implement_deconvoluted_centroidlike_inner, CoordinateLikeMut, IonMobility};
 use crate::{MZLocated, MassLocated};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -385,6 +385,166 @@ where
         <D as CoordinateLike<MZ>>::coordinate(self.inner)
     }
 }
+
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd)]
+pub struct IonMobilityAwareCentroidPeak {
+    pub mz: f64,
+    pub ion_mobility: f64,
+    pub intensity: f32,
+    pub index: u32,
+}
+
+impl CoordinateLike<MZ> for IonMobilityAwareCentroidPeak {
+    fn coordinate(&self) -> f64 {
+        self.mz
+    }
+}
+
+impl CoordinateLike<IonMobility> for IonMobilityAwareCentroidPeak {
+    fn coordinate(&self) -> f64 {
+        self.ion_mobility
+    }
+}
+
+impl IntensityMeasurement for IonMobilityAwareCentroidPeak {
+    fn intensity(&self) -> f32 {
+        self.intensity
+    }
+}
+
+impl CoordinateLikeMut<MZ> for IonMobilityAwareCentroidPeak {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        &mut self.mz
+    }
+}
+
+impl CoordinateLikeMut<IonMobility> for IonMobilityAwareCentroidPeak {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        &mut self.ion_mobility
+    }
+}
+
+impl IndexedCoordinate<MZ> for IonMobilityAwareCentroidPeak {
+    fn get_index(&self) -> IndexType {
+        self.index
+    }
+
+    fn set_index(&mut self, index: IndexType) {
+        self.index = index
+    }
+}
+
+impl IntensityMeasurementMut for IonMobilityAwareCentroidPeak {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        &mut self.intensity
+    }
+}
+
+impl IonMobilityAwareCentroidPeak {
+    pub fn new(mz: f64, ion_mobility: f64, intensity: f32, index: u32) -> Self {
+        Self { mz, ion_mobility, intensity, index }
+    }
+}
+
+
+
+
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd)]
+pub struct IonMobilityAwareDeconvolutedPeak {
+    pub neutral_mass: f64,
+    pub ion_mobility: f64,
+    pub charge: i32,
+    pub intensity: f32,
+    pub index: u32,
+}
+
+impl IonMobilityAwareDeconvolutedPeak {
+    pub fn new(neutral_mass: f64, ion_mobility: f64, charge: i32, intensity: f32, index: u32) -> Self {
+        Self {
+            neutral_mass,
+            ion_mobility,
+            charge,
+            intensity,
+            index,
+        }
+    }
+}
+
+impl CoordinateLike<Mass> for IonMobilityAwareDeconvolutedPeak {
+    fn coordinate(&self) -> f64 {
+        self.neutral_mass
+    }
+}
+
+impl CoordinateLike<MZ> for IonMobilityAwareDeconvolutedPeak {
+    fn coordinate(&self) -> f64 {
+        self.as_centroid().mz()
+    }
+}
+
+impl CoordinateLike<IonMobility> for IonMobilityAwareDeconvolutedPeak {
+    fn coordinate(&self) -> f64 {
+        self.ion_mobility
+    }
+}
+
+impl CoordinateLikeMut<Mass> for IonMobilityAwareDeconvolutedPeak {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        &mut self.neutral_mass
+    }
+}
+
+impl CoordinateLikeMut<IonMobility> for IonMobilityAwareDeconvolutedPeak {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        &mut self.ion_mobility
+    }
+}
+
+impl From<IonMobilityAwareDeconvolutedPeak> for DeconvolutedPeak {
+    fn from(value: IonMobilityAwareDeconvolutedPeak) -> Self {
+        Self::new(
+            value.neutral_mass,
+            value.intensity,
+            value.charge,
+            value.index,
+        )
+    }
+}
+
+impl IntensityMeasurement for IonMobilityAwareDeconvolutedPeak {
+    fn intensity(&self) -> f32 {
+        self.intensity
+    }
+}
+
+impl IntensityMeasurementMut for IonMobilityAwareDeconvolutedPeak {
+    fn intensity_mut(&mut self) -> &mut f32 {
+        &mut self.intensity
+    }
+}
+
+impl KnownCharge for IonMobilityAwareDeconvolutedPeak {
+    fn charge(&self) -> i32 {
+        self.charge
+    }
+}
+
+impl KnownChargeMut for IonMobilityAwareDeconvolutedPeak {
+    fn charge_mut(&mut self) -> &mut i32 {
+        &mut self.charge
+    }
+}
+
+impl IndexedCoordinate<Mass> for IonMobilityAwareDeconvolutedPeak {
+    fn get_index(&self) -> IndexType {
+        self.index
+    }
+
+    fn set_index(&mut self, index: IndexType) {
+        self.index = index;
+    }
+}
+
 
 #[cfg(test)]
 mod test {

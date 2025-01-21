@@ -1,14 +1,20 @@
-use std::{cmp::Ordering, ops::RangeBounds};
+use std::{cmp::Ordering, marker::PhantomData, ops::{Index, RangeBounds}};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ}, DeconvolutedPeak, IntensityMeasurement, KnownCharge, KnownChargeMut, MZLocated, MassLocated
+    coordinate::{CoordinateLike, IonMobility, Mass, Time, MZ},
+    CoordinateLikeMut, DeconvolutedPeak, IndexedCoordinate, IntensityMeasurement,
+    IntensityMeasurementMut, KnownCharge, KnownChargeMut, MZLocated, MassLocated,
 };
 
-use super::{feature::{Feature, FeatureView, Iter, IterMut}, traits::BuildFromPeak, PeakSeries, TimeArray};
 use super::traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval};
+use super::{
+    feature::{Feature, FeatureView, Iter, IterMut},
+    traits::BuildFromPeak,
+    AsPeakIter, TimeArray,
+};
 
 /// A [`Feature`] with an associated `charge`, implementing the [`KnownCharge`] trait.
 #[derive(Debug, Default, Clone)]
@@ -171,12 +177,14 @@ impl<Y> ChargedFeature<Mass, Y> {
     }
 }
 
-impl<'a, Y: 'a> PeakSeries<'a> for ChargedFeature<Mass, Y> {
+impl<Y> AsPeakIter for ChargedFeature<Mass, Y> {
     type Peak = DeconvolutedPeak;
+    type Iter<'a>
+        = DeconvolutedPeakIter<'a, Y>
+    where
+        Self: 'a;
 
-    type Iter = DeconvolutedPeakIter<'a, Y>;
-
-    fn iter_peaks(&'a self) -> Self::Iter {
+    fn iter_peaks(&self) -> Self::Iter<'_> {
         self.iter_peaks()
     }
 }
@@ -261,14 +269,14 @@ pub type DeconvolvedIMSFeature = ChargedFeature<Mass, IonMobility>;
 /// An iterator over a [`ChargedFeature`] which produces [`DeconvolutedPeak`]
 /// instances with an associated time point.
 pub struct DeconvolutedPeakIter<'a, Y> {
-    source: &'a ChargedFeature<Mass, Y>,
+    charge: i32,
     point_iter: Iter<'a, Mass, Y>,
 }
 
 impl<'a, Y> DeconvolutedPeakIter<'a, Y> {
     pub fn new(source: &'a ChargedFeature<Mass, Y>) -> Self {
         Self {
-            source,
+            charge: source.charge(),
             point_iter: source.iter(),
         }
     }
@@ -279,10 +287,7 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.next() {
-            Some((
-                DeconvolutedPeak::new(mass, intensity, self.source.charge, 0),
-                time,
-            ))
+            Some((DeconvolutedPeak::new(mass, intensity, self.charge, 0), time))
         } else {
             None
         }
@@ -290,10 +295,7 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
 
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.nth(n) {
-            Some((
-                DeconvolutedPeak::new(mass, intensity, self.source.charge, 0),
-                time,
-            ))
+            Some((DeconvolutedPeak::new(mass, intensity, self.charge, 0), time))
         } else {
             None
         }
@@ -306,17 +308,14 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
 
 impl<'a, Y> ExactSizeIterator for DeconvolutedPeakIter<'a, Y> {
     fn len(&self) -> usize {
-        self.source.len()
+        self.point_iter.len()
     }
 }
 
 impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.next_back() {
-            Some((
-                DeconvolutedPeak::new(mass, intensity, self.source.charge, 0),
-                time,
-            ))
+            Some((DeconvolutedPeak::new(mass, intensity, self.charge, 0), time))
         } else {
             None
         }
@@ -333,14 +332,17 @@ impl<X, Y> IntoIterator for ChargedFeature<X, Y> {
     }
 }
 
-
-impl<Y, T: MZLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T> for ChargedFeature<MZ, Y> {
+impl<Y, T: MZLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T>
+    for ChargedFeature<MZ, Y>
+{
     fn push_peak(&mut self, value: T, time: f64) {
         self.push(&value, time);
     }
 }
 
-impl<Y, T: MassLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T> for ChargedFeature<Mass, Y> {
+impl<Y, T: MassLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T>
+    for ChargedFeature<Mass, Y>
+{
     fn push_peak(&mut self, value: T, time: f64) {
         self.push(&value, time);
     }
@@ -533,5 +535,342 @@ impl<'a, X, Y> IntoIterator for ChargedFeatureView<'a, X, Y> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ChargedFeatureWrapper<X, Y, F: TimeInterval<Y> + TimeArray<Y>> {
+    inner: F,
+    charge: i32,
+    _x: PhantomData<X>,
+    _y: PhantomData<Y>,
+}
+
+impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> ChargedFeatureWrapper<X, Y, F> {
+    pub fn new(inner: F, charge: i32) -> Self {
+        Self {
+            inner,
+            charge,
+            _x: PhantomData,
+            _y: PhantomData,
+        }
+    }
+
+    pub fn into_inner(self) -> (F, i32) {
+        (self.inner, self.charge)
+    }
+
+    pub fn as_inner(&self) -> (&F, i32) {
+        (&self.inner, self.charge)
+    }
+}
+
+impl<'a, X, Y, F: FeatureLike<X, Y> + TimeInterval<Y> + TimeArray<Y>>
+    SplittableFeatureLike<'a, X, Y> for ChargedFeatureWrapper<X, Y, F>
+where
+    F: SplittableFeatureLike<'a, X, Y>,
+    F::ViewType: FeatureLike<X, Y> + TimeInterval<Y> + TimeArray<Y>,
+{
+    type ViewType = ChargedFeatureWrapper<X, Y, F::ViewType>;
+
+    fn split_at(&'a self, index: usize) -> (Self::ViewType, Self::ViewType) {
+        let (a, b) = self.inner.split_at(index);
+        (
+            ChargedFeatureWrapper::new(a, self.charge),
+            ChargedFeatureWrapper::new(b, self.charge),
+        )
+    }
+
+    fn split_at_time(&'a self, point: f64) -> (Self::ViewType, Self::ViewType) {
+        let (a, b) = self.inner.split_at_time(point);
+        (
+            ChargedFeatureWrapper::new(a, self.charge),
+            ChargedFeatureWrapper::new(b, self.charge),
+        )
+    }
+
+    fn slice<I: RangeBounds<usize> + Clone>(&'a self, bounds: I) -> Self::ViewType {
+        let a = self.inner.slice(bounds);
+        ChargedFeatureWrapper::new(a, self.charge)
+    }
+}
+
+impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> KnownChargeMut for ChargedFeatureWrapper<X, Y, F> {
+    fn charge_mut(&mut self) -> &mut i32 {
+        &mut self.charge
+    }
+}
+
+impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> KnownCharge for ChargedFeatureWrapper<X, Y, F> {
+    fn charge(&self) -> i32 {
+        self.charge
+    }
+}
+
+impl<X, Y, F: IntensityMeasurement + TimeInterval<Y> + TimeArray<Y>> IntensityMeasurement
+    for ChargedFeatureWrapper<X, Y, F>
+{
+    fn intensity(&self) -> f32 {
+        self.inner.intensity()
+    }
+}
+
+impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> TimeInterval<Y> for ChargedFeatureWrapper<X, Y, F> {
+    fn start_time(&self) -> Option<f64> {
+        <F as TimeInterval<Y>>::start_time(&self.inner)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        <F as TimeInterval<Y>>::end_time(&self.inner)
+    }
+
+    fn apex_time(&self) -> Option<f64> {
+        <F as TimeInterval<Y>>::apex_time(&self.inner)
+    }
+
+    fn area(&self) -> f32 {
+        <F as TimeInterval<Y>>::area(&self.inner)
+    }
+
+    fn as_range(&self) -> crate::CoordinateRange<Y> {
+        <F as TimeInterval<Y>>::as_range(&self.inner)
+    }
+
+    fn spans(&self, time: f64) -> bool {
+        <F as TimeInterval<Y>>::spans(&self.inner, time)
+    }
+
+    fn iter_time(&self) -> impl Iterator<Item = f64> {
+        <F as TimeInterval<Y>>::iter_time(&self.inner)
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        <F as TimeInterval<Y>>::find_time(&self.inner, time)
+    }
+}
+
+impl<X, Y, F: PartialEq<F> + TimeInterval<Y> + TimeArray<Y>> PartialEq
+    for ChargedFeatureWrapper<X, Y, F>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+            && self.charge == other.charge
+            && self._x == other._x
+            && self._y == other._y
+    }
+}
+
+impl<X, Y, F: PartialOrd<F> + TimeInterval<Y> + TimeArray<Y>> PartialOrd
+    for ChargedFeatureWrapper<X, Y, F>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.inner.partial_cmp(&other.inner) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.charge.partial_cmp(&other.charge) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self._x.partial_cmp(&other._x) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self._y.partial_cmp(&other._y)
+    }
+}
+
+impl<X, Y, F: CoordinateLike<X> + TimeInterval<Y> + TimeArray<Y>> CoordinateLike<X>
+    for ChargedFeatureWrapper<X, Y, F>
+{
+    fn coordinate(&self) -> f64 {
+        self.inner.coordinate()
+    }
+}
+
+impl<X, Y, F: FeatureLike<X, Y> + TimeInterval<Y> + TimeArray<Y>> FeatureLike<X, Y>
+    for ChargedFeatureWrapper<X, Y, F>
+{
+    fn len(&self) -> usize {
+        <F as FeatureLike<X, Y>>::len(&self.inner)
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
+        <F as FeatureLike<X, Y>>::iter(&self.inner)
+    }
+
+    fn is_empty(&self) -> bool {
+        <F as FeatureLike<X, Y>>::is_empty(&self.inner)
+    }
+
+    fn at(&self, index: usize) -> Option<(f64, f64, f32)> {
+        <F as FeatureLike<X, Y>>::at(&self.inner, index)
+    }
+
+    fn first(&self) -> Option<(f64, f64, f32)> {
+        <F as FeatureLike<X, Y>>::first(&self.inner)
+    }
+
+    fn last(&self) -> Option<(f64, f64, f32)> {
+        <F as FeatureLike<X, Y>>::last(&self.inner)
+    }
+
+    fn at_time(&self, time: f64) -> Option<(f64, f64, f32)> {
+        <F as FeatureLike<X, Y>>::at_time(&self.inner, time)
+    }
+}
+
+impl<X, Y, F: FeatureLike<X, Y> + TimeInterval<Y> + TimeArray<Y>> FeatureLikeMut<X, Y>
+    for ChargedFeatureWrapper<X, Y, F>
+where
+    F: FeatureLikeMut<X, Y>,
+{
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
+        <F as FeatureLikeMut<X, Y>>::iter_mut(&mut self.inner)
+    }
+
+    fn push<T: CoordinateLike<X> + IntensityMeasurement>(&mut self, pt: &T, time: f64) {
+        <F as FeatureLikeMut<X, Y>>::push(&mut self.inner, pt, time)
+    }
+
+    fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        <F as FeatureLikeMut<X, Y>>::push_raw(&mut self.inner, x, y, z)
+    }
+
+    fn clear(&mut self) {
+        <F as FeatureLikeMut<X, Y>>::clear(&mut self.inner)
+    }
+
+    fn at_mut(&mut self, index: usize) -> Option<(&mut f64, f64, &mut f32)> {
+        <F as FeatureLikeMut<X, Y>>::at_mut(&mut self.inner, index)
+    }
+
+    fn first_mut(&mut self) -> Option<(&mut f64, f64, &mut f32)> {
+        <F as FeatureLikeMut<X, Y>>::first_mut(&mut self.inner)
+    }
+
+    fn last_mut(&mut self) -> Option<(&mut f64, f64, &mut f32)> {
+        <F as FeatureLikeMut<X, Y>>::last_mut(&mut self.inner)
+    }
+
+    fn at_time_mut(&mut self, time: f64) -> Option<(&mut f64, f64, &mut f32)> {
+        <F as FeatureLikeMut<X, Y>>::at_time_mut(&mut self.inner, time)
+    }
+}
+
+use super::{NDFeatureLike, NDFeatureLikeMut};
+
+#[derive(Debug, Default, Clone, PartialEq, PartialOrd)]
+pub struct Charged<T>(pub T, pub i32);
+
+impl<T> AsRef<T> for Charged<T> {
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> Charged<T> {
+    pub fn new(point: T, charge: i32) -> Self {
+        Self(point, charge)
+    }
+
+    pub fn into(self) -> T {
+        self.0
+    }
+}
+
+impl<D, T: CoordinateLike<D>> CoordinateLike<D> for Charged<T> {
+    fn coordinate(&self) -> f64 {
+        self.0.coordinate()
+    }
+}
+
+impl<T> KnownCharge for Charged<T> {
+    fn charge(&self) -> i32 {
+        self.1
+    }
+}
+
+impl<T> KnownChargeMut for Charged<T> {
+    fn charge_mut(&mut self) -> &mut i32 {
+        &mut self.1
+    }
+}
+
+impl<D, T: CoordinateLikeMut<D>> CoordinateLikeMut<D> for Charged<T> {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        self.0.coordinate_mut()
+    }
+}
+
+impl<T> IntensityMeasurement for Charged<T>
+where
+    T: IntensityMeasurement,
+{
+    fn intensity(&self) -> f32 {
+        self.0.intensity()
+    }
+}
+
+impl<T> IntensityMeasurementMut for Charged<T>
+where
+    T: IntensityMeasurementMut,
+{
+    fn intensity_mut(&mut self) -> &mut f32 {
+        self.0.intensity_mut()
+    }
+}
+
+impl<D, T: IndexedCoordinate<D>> IndexedCoordinate<D> for Charged<T> {
+    fn get_index(&self) -> crate::IndexType {
+        self.0.get_index()
+    }
+
+    fn set_index(&mut self, index: crate::IndexType) {
+        self.0.set_index(index);
+    }
+}
+
+impl<X, Y, F: NDFeatureLike<X, Y> + TimeInterval<Y> + TimeArray<Y>> NDFeatureLike<X, Y>
+    for ChargedFeatureWrapper<X, Y, F> where Charged<F::Point>: Index<usize, Output = f64>
+{
+    type Point = Charged<F::Point>;
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = Self::Point> {
+        self.inner.iter().map(|pt| Charged::new(pt, self.charge))
+    }
+
+    fn coordinate(&self) -> Self::Point {
+        let pt = self.inner.coordinate();
+        Charged::new(pt, self.charge)
+    }
+}
+
+impl<X, Y, F: NDFeatureLikeMut<X, Y> + TimeInterval<Y> + TimeArray<Y>>
+    NDFeatureLikeMut<X, Y> for ChargedFeatureWrapper<X, Y, F> where Charged<F::Point>: Index<usize, Output = f64>
+{
+    type PointMutRef<'a>
+        = Charged<F::PointMutRef<'a>>
+    where
+        Self: 'a;
+
+    fn iter_mut(&mut self) -> impl Iterator<Item = Self::PointMutRef<'_>> {
+        self.inner
+            .iter_mut()
+            .map(|pt| Charged::new(pt, self.charge))
+    }
+
+    fn push<P: Into<Self::Point>>(&mut self, pt: P, time: f64) {
+        let point = pt.into();
+        self.inner.push(point.0, time);
+    }
+
+    fn push_raw(&mut self, point: Self::Point) {
+        self.inner.push_raw(point.0);
     }
 }

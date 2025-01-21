@@ -11,19 +11,22 @@ mod traits;
 mod util;
 
 pub use traits::{
-    FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut, SplittableFeatureLike,
-    TimeArray, TimeInterval, PeakSeries, BuildFromPeak,
+    AsPeakIter, BuildFromPeak, FeatureLike, FeatureLikeMut, NDFeatureLike,
+    NDFeatureLikeMut, PeakSeries, SplittableFeatureLike, TimeArray, TimeInterval,
 };
 
 pub use charged::{
-    ChargedFeature, ChargedFeatureView, DeconvolutedPeakIter, DeconvolvedIMSFeature,
-    DeconvolvedLCMSFeature,
+    Charged as ChargedPointWrapper, ChargedFeature, ChargedFeatureView, ChargedFeatureWrapper,
+    DeconvolutedPeakIter, DeconvolvedIMSFeature, DeconvolvedLCMSFeature,
 };
+
 pub use feature::{
     Feature, FeatureView, IMSFeature, IntoIter, Iter, IterMut, LCMSFeature, MZPeakIter,
 };
-pub use ndim::{NDFeature, NDIter, NDIterMut, NDPoint, NDPointMutRef};
+
 pub use simple::{SimpleFeature, SimpleFeatureView};
+
+pub use ndim::{NDFeature, NDIter, NDIterMut, NDPoint, NDPointMutRef};
 
 #[cfg(test)]
 mod test {

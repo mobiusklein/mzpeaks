@@ -5,8 +5,8 @@ pub use crate::coordinate::{
     IonMobilityLocated, MZLocated, MassLocated, Span1D, Span2D, TimeLocated,
 };
 pub use crate::feature::{
-    BuildFromPeak, FeatureLike, FeatureLikeMut, FeatureLikeNDLike, FeatureLikeNDLikeMut,
-    PeakSeries, SplittableFeatureLike, TimeArray, TimeInterval,
+    BuildFromPeak, FeatureLike, FeatureLikeMut, NDFeatureLike, NDFeatureLikeMut,
+    AsPeakIter, SplittableFeatureLike, TimeArray, TimeInterval, PeakSeries
 };
 pub use crate::feature_map::{FeatureMapLike, FeatureMapLikeMut};
 pub use crate::mass_error::Tolerance;
