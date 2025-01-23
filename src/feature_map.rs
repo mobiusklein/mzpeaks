@@ -587,8 +587,8 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> IntoIterator for FeatureMapView<'a, X, Y, T
     }
 }
 
-/// An N-dimensional feature collection where features are sorted by the `X` dimension
-/// and each feature is internally sorted by the `Y` dimension.
+/// An N-dimensional feature collection where features are sorted by the first axis in
+/// the `X` dimension(s) and each feature is internally sorted by the `Y` dimension.
 pub trait NDFeatureMapLike<X, Y, T: NDFeatureLike<X, Y> + PartialOrd>:
     ops::Index<usize, Output = T>
 {

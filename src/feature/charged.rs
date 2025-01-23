@@ -547,6 +547,16 @@ pub struct ChargedFeatureWrapper<X, Y, F: TimeInterval<Y> + TimeArray<Y>> {
     _y: PhantomData<Y>,
 }
 
+impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> TimeArray<Y> for ChargedFeatureWrapper<X, Y, F> {
+    fn time_view(&self) -> &[f64] {
+        <F as TimeArray<Y>>::time_view(&self.inner)
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        <F as TimeArray<Y>>::intensity_view(&self.inner)
+    }
+}
+
 impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> ChargedFeatureWrapper<X, Y, F> {
     pub fn new(inner: F, charge: i32) -> Self {
         Self {
@@ -563,6 +573,10 @@ impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> ChargedFeatureWrapper<X, Y, F> {
 
     pub fn as_inner(&self) -> (&F, i32) {
         (&self.inner, self.charge)
+    }
+
+    pub fn as_mut(&mut self) -> (&mut F, &mut i32) {
+        (&mut self.inner, &mut self.charge)
     }
 }
 

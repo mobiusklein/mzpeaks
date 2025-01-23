@@ -547,6 +547,18 @@ impl<'a, X, Y> IterMut<'a, X, Y> {
             _y: PhantomData,
         }
     }
+
+    pub fn from_parts(xiter: slice::IterMut<'a, f64>,
+                      yiter: slice::IterMut<'a, f64>,
+                      ziter: slice::IterMut<'a, f32>) -> Self {
+        Self {
+            xiter,
+            yiter,
+            ziter,
+            _x: PhantomData,
+            _y: PhantomData
+        }
+    }
 }
 
 impl<'a, X, Y> DoubleEndedIterator for IterMut<'a, X, Y> {

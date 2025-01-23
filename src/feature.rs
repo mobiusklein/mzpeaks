@@ -26,7 +26,7 @@ pub use feature::{
 
 pub use simple::{SimpleFeature, SimpleFeatureView};
 
-pub use ndim::{NDFeature, NDIter, NDIterMut, NDPoint, NDPointMutRef};
+pub use ndim::{NDFeature, NDIter, NDIterMut, NDPoint, NDPointMutRef, NDFeatureAdapter};
 
 #[cfg(test)]
 mod test {

@@ -1,6 +1,12 @@
-use std::{collections::VecDeque, ops::{Index, RangeBounds}};
+use std::{
+    collections::VecDeque,
+    ops::{Index, RangeBounds},
+};
 
-use crate::{coordinate::CoordinateLike, CoordinateRange, IntensityMeasurement, IntensityMeasurementMut};
+use crate::{
+    coordinate::CoordinateLike, CoordinateLikeMut, CoordinateRange, IntensityMeasurement,
+    IntensityMeasurementMut,
+};
 
 /// Represent an interval of time
 pub trait TimeInterval<T> {
@@ -75,7 +81,7 @@ impl<'a, T, U: TimeInterval<T>> TimeInterval<T> for &'a U {
 }
 
 /// An expansion of [`TimeInterval`] which provides a contiguous slice over the time dimension
-pub trait TimeArray<T> : TimeInterval<T> {
+pub trait TimeArray<T>: TimeInterval<T> {
     /// A slice over the complete time dimension
     fn time_view(&self) -> &[f64];
 
@@ -86,19 +92,20 @@ pub trait TimeArray<T> : TimeInterval<T> {
 /// Iterate over a [`FeatureLike`] type, producing `(peak, time)` pairs
 pub trait AsPeakIter {
     type Peak;
-    type Iter<'a>: Iterator<Item = (Self::Peak, f64)> where Self: 'a;
+    type Iter<'a>: Iterator<Item = (Self::Peak, f64)>
+    where
+        Self: 'a;
 
     fn iter_peaks(&self) -> Self::Iter<'_>;
 }
 
 /// Build a [`FeatureLikeMut`] type from a sequence of `(peak, time)` pairs
 pub trait BuildFromPeak<T> {
-
     /// Like [`FeatureLikeMut::push`] but permitting specialized behavior
     fn push_peak(&mut self, value: T, time: f64);
 
     /// Like [`Extend`] but uses [`BuildFromPeak::push_peak`]
-    fn extend_from_peaks<I: IntoIterator<Item=(T, f64)>>(&mut self, iter: I) {
+    fn extend_from_peaks<I: IntoIterator<Item = (T, f64)>>(&mut self, iter: I) {
         for (p, t) in iter {
             self.push_peak(p, t);
         }
@@ -108,7 +115,7 @@ pub trait BuildFromPeak<T> {
 /// A marker trait indicating that a feature type can be converted to and from a sequence of peaks
 pub trait PeakSeries: BuildFromPeak<Self::Peak> + AsPeakIter {}
 
-impl<T, F: AsPeakIter<Peak=T> + BuildFromPeak<T>> PeakSeries for F {}
+impl<T, F: AsPeakIter<Peak = T> + BuildFromPeak<T>> PeakSeries for F {}
 
 impl<'a, T, U: TimeArray<T>> TimeArray<T> for &'a U {
     fn time_view(&self) -> &[f64] {
@@ -194,7 +201,7 @@ pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
 
     /// Get a mutable reference to feature data at a specified index
     fn at_mut(&mut self, index: usize) -> Option<(&mut f64, f64, &mut f32)> {
-        self.iter_mut().nth(index).map(|(x, y, z)| (x, *y, z ))
+        self.iter_mut().nth(index).map(|(x, y, z)| (x, *y, z))
     }
 
     /// Get a mutable reference to feature data at the first index, if it exists
@@ -393,7 +400,12 @@ pub trait NDFeatureLike<T, Y>: IntensityMeasurement + TimeInterval<Y> + PartialO
 }
 
 pub trait NDFeatureLikeMut<T, Y>: NDFeatureLike<T, Y> {
-    type PointMutRef<'a>: IntensityMeasurement + IntensityMeasurementMut + CoordinateLike<Y> where Self: 'a;
+    type PointMutRef<'a>: IntensityMeasurement
+        + IntensityMeasurementMut
+        + CoordinateLike<Y>
+        + CoordinateLikeMut<Y>
+    where
+        Self: 'a;
 
     /// Create an iterator that yields (x, y, intensity) mutable references
     ///

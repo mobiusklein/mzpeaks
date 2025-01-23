@@ -1,6 +1,10 @@
-use std::{iter::FusedIterator, marker::PhantomData, ops::Index};
+use std::{
+    iter::FusedIterator,
+    marker::PhantomData,
+    ops::{Index, IndexMut},
+};
 
-use crate::{coordinate::CoordinateLike, IntensityMeasurement};
+use crate::{coordinate::CoordinateLike, IntensityMeasurement, KnownChargeMut};
 use crate::{
     feature::{AsPeakIter, BuildFromPeak},
     peak::{IonMobilityAwareCentroidPeak, IonMobilityAwareDeconvolutedPeak},
@@ -14,41 +18,42 @@ use {
     serde_big_array::BigArray,
 };
 
-use super::util::NonNan;
 use super::{
     charged::Charged,
     traits::{CoArrayOps, NDFeatureLike, NDFeatureLikeMut},
+    FeatureLikeMut,
 };
+use super::{util::NonNan, FeatureLike};
 use super::{TimeArray, TimeInterval};
 
 macro_rules! impl_dim_pt {
     ($pt:ident, $dim:ty, $idx:literal) => {
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl $crate::coordinate::CoordinateLike<$dim>
+            for $pt<2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate(&self) -> f64 {
                 self.dimensions[$idx]
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::IonMobility>
-            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl $crate::coordinate::CoordinateLike<$crate::IonMobility>
+            for $pt<2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate(&self) -> f64 {
                 self.dimensions[$idx + 1]
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl $crate::coordinate::CoordinateLike<$dim>
+            for $pt<2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate(&self) -> f64 {
                 self.dimensions[$idx]
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::Time>
-            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl $crate::coordinate::CoordinateLike<$crate::Time>
+            for $pt<2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate(&self) -> f64 {
                 self.dimensions[$idx + 1]
@@ -57,32 +62,32 @@ macro_rules! impl_dim_pt {
 
         //
 
-        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
-            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate_mut(&mut self) -> &mut f64 {
                 &mut self.dimensions[$idx]
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$crate::IonMobility>
-            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl $crate::coordinate::CoordinateLikeMut<$crate::IonMobility>
+            for $pt<2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate_mut(&mut self) -> &mut f64 {
                 &mut self.dimensions[$idx + 1]
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
-            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate_mut(&mut self) -> &mut f64 {
                 &mut self.dimensions[$idx]
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLikeMut<$crate::Time>
-            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl $crate::coordinate::CoordinateLikeMut<$crate::Time>
+            for $pt<2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate_mut(&mut self) -> &mut f64 {
                 &mut self.dimensions[$idx + 1]
@@ -109,6 +114,12 @@ impl<const N: usize, T, Y> Index<usize> for NDPoint<N, T, Y> {
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.dimensions[index]
+    }
+}
+
+impl<const N: usize, T, Y> IndexMut<usize> for NDPoint<N, T, Y> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.dimensions[index]
     }
 }
 
@@ -212,6 +223,20 @@ pub struct NDPointMutRef<'a, const N: usize, T, Y> {
     _y: PhantomData<Y>,
 }
 
+impl<'a, const N: usize, T, Y> Index<usize> for NDPointMutRef<'a, N, T, Y> {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.dimensions[index]
+    }
+}
+
+impl<'a, const N: usize, T, Y> IndexMut<usize> for NDPointMutRef<'a, N, T, Y> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.dimensions[index]
+    }
+}
+
 impl<'a, const N: usize, T, Y> NDPointMutRef<'a, N, T, Y> {
     pub fn new(dimensions: [&'a mut f64; N], time: f64, intensity: &'a mut f32) -> Self {
         Self {
@@ -268,6 +293,12 @@ impl<'a, const N: usize, T, Y> CoordinateLike<Y> for NDPointMutRef<'a, N, T, Y> 
     }
 }
 
+impl<'a, const N: usize, T, Y> CoordinateLikeMut<Y> for NDPointMutRef<'a, N, T, Y> {
+    fn coordinate_mut(&mut self) -> &mut f64 {
+        &mut self.time
+    }
+}
+
 impl<'a, const N: usize, T, Y> IntensityMeasurement for NDPointMutRef<'a, N, T, Y> {
     fn intensity(&self) -> f32 {
         *self.intensity
@@ -282,48 +313,48 @@ impl<'a, const N: usize, T, Y> IntensityMeasurementMut for NDPointMutRef<'a, N, 
 
 macro_rules! impl_dim_pt_ref {
     ($pt:ident, $dim:ty, $idx:literal) => {
-        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<'a, N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl<'a> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<'a, 2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate(&self) -> f64 {
                 *self.dimensions[$idx]
             }
         }
 
-        impl<'a, const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
-            for $pt<'a, N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl<'a> $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<'a, 2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate_mut(&mut self) -> &mut f64 {
                 self.dimensions[$idx]
             }
         }
 
-        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$crate::IonMobility>
-            for $pt<'a, N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl<'a> $crate::coordinate::CoordinateLike<$crate::IonMobility>
+            for $pt<'a, 2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate(&self) -> f64 {
                 *self.dimensions[$idx + 1]
             }
         }
 
-        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<'a, N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl<'a> $crate::coordinate::CoordinateLike<$dim>
+            for $pt<'a, 2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate(&self) -> f64 {
                 *self.dimensions[$idx]
             }
         }
 
-        impl<'a, const N: usize> $crate::coordinate::CoordinateLikeMut<$dim>
-            for $pt<'a, N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl<'a> $crate::coordinate::CoordinateLikeMut<$dim>
+            for $pt<'a, 2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate_mut(&mut self) -> &mut f64 {
                 self.dimensions[$idx]
             }
         }
 
-        impl<'a, const N: usize> $crate::coordinate::CoordinateLike<$crate::Time>
-            for $pt<'a, N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl<'a> $crate::coordinate::CoordinateLike<$crate::Time>
+            for $pt<'a, 2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate(&self) -> f64 {
                 *self.dimensions[$idx + 1]
@@ -457,32 +488,32 @@ impl<'a, const N: usize, T, Y> NDIterMut<'a, N, T, Y> {
 
 macro_rules! impl_dim_feat {
     ($pt:ident, $dim:ty, $idx:literal) => {
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl $crate::coordinate::CoordinateLike<$dim>
+            for $pt<2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate(&self) -> f64 {
                 self.weighted_average(&self.dimensions[$idx], &self.intensity)
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::IonMobility>
-            for $pt<N, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
+        impl $crate::coordinate::CoordinateLike<$crate::IonMobility>
+            for $pt<2, ($dim, $crate::coordinate::IonMobility), $crate::coordinate::Time>
         {
             fn coordinate(&self) -> f64 {
                 self.weighted_average(&self.dimensions[$idx + 1], &self.intensity)
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$dim>
-            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl $crate::coordinate::CoordinateLike<$dim>
+            for $pt<2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate(&self) -> f64 {
                 self.weighted_average(&self.dimensions[$idx], &self.intensity)
             }
         }
 
-        impl<const N: usize> $crate::coordinate::CoordinateLike<$crate::Time>
-            for $pt<N, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
+        impl $crate::coordinate::CoordinateLike<$crate::Time>
+            for $pt<2, ($dim, $crate::coordinate::Time), $crate::coordinate::IonMobility>
         {
             fn coordinate(&self) -> f64 {
                 self.weighted_average(&self.dimensions[$idx + 1], &self.intensity)
@@ -491,7 +522,7 @@ macro_rules! impl_dim_feat {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NDFeature<const N: usize, T, Y> {
     #[cfg_attr(feature = "serde", serde(with = "BigArray"))]
@@ -584,9 +615,10 @@ impl<const N: usize, T, Y> NDFeatureLike<T, Y> for NDFeature<N, T, Y> {
     }
 
     fn coordinate(&self) -> Self::Point {
-        let dims = self.dimensions.each_ref().map(|d| {
-            self.weighted_average(d.as_slice(), &self.intensity)
-        });
+        let dims = self
+            .dimensions
+            .each_ref()
+            .map(|d| self.weighted_average(d.as_slice(), &self.intensity));
         let time = self.apex_time().unwrap_or_default();
         let intensity = self.intensity();
         Self::Point::new(dims, time, intensity)
@@ -864,6 +896,264 @@ impl BuildFromPeak<IonMobilityAwareDeconvolutedPeak>
             ),
             value.charge(),
         ));
+    }
+}
+
+/// An adapter from [`NDFeatureLike`] to [`FeatureLike`].
+///
+/// # Note
+/// Assumes dimension `T0` is the 0th dimension in `T`, but this cannot be
+/// enforced as Rust lacks variadic generics.
+#[derive(Debug, Clone)]
+pub struct NDFeatureAdapter<
+    T0,
+    T,
+    Y,
+    F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>,
+> {
+    inner: F,
+    _x: PhantomData<(T, Y, T0)>,
+}
+
+impl<
+        T0,
+        T,
+        Y,
+        F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0> + KnownCharge,
+    > KnownCharge for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn charge(&self) -> i32 {
+        self.inner.charge()
+    }
+}
+
+impl<
+        T0,
+        T,
+        Y,
+        F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0> + KnownChargeMut,
+    > KnownChargeMut for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn charge_mut(&mut self) -> &mut i32 {
+        self.inner.charge_mut()
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    PartialEq for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    PartialOrd for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.inner.partial_cmp(&other.inner)
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    CoordinateLike<T0> for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn coordinate(&self) -> f64 {
+        <F as CoordinateLike<T0>>::coordinate(&self.inner)
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    IntensityMeasurement for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn intensity(&self) -> f32 {
+        self.inner.intensity()
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    FeatureLike<T0, Y> for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
+        self.inner.iter().map(|pt| {
+            (
+                pt[0],
+                <F::Point as CoordinateLike<Y>>::coordinate(&pt),
+                pt.intensity(),
+            )
+        })
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    TimeArray<Y> for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn time_view(&self) -> &[f64] {
+        <F as TimeArray<Y>>::time_view(&self.inner)
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        <F as TimeArray<Y>>::intensity_view(&self.inner)
+    }
+}
+
+impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    TimeInterval<Y> for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn start_time(&self) -> Option<f64> {
+        <F as TimeInterval<Y>>::start_time(&self.inner)
+    }
+
+    fn end_time(&self) -> Option<f64> {
+        <F as TimeInterval<Y>>::end_time(&self.inner)
+    }
+
+    fn apex_time(&self) -> Option<f64> {
+        <F as TimeInterval<Y>>::apex_time(&self.inner)
+    }
+
+    fn area(&self) -> f32 {
+        <F as TimeInterval<Y>>::area(&self.inner)
+    }
+
+    fn as_range(&self) -> crate::CoordinateRange<Y> {
+        <F as TimeInterval<Y>>::as_range(&self.inner)
+    }
+
+    fn spans(&self, time: f64) -> bool {
+        <F as TimeInterval<Y>>::spans(&self.inner, time)
+    }
+
+    fn iter_time(&self) -> impl Iterator<Item = f64> {
+        <F as TimeInterval<Y>>::iter_time(&self.inner)
+    }
+
+    fn find_time(&self, time: f64) -> (Option<usize>, f64) {
+        <F as TimeInterval<Y>>::find_time(&self.inner, time)
+    }
+}
+
+impl<X, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<X>>
+    NDFeatureAdapter<X, T, Y, F>
+{
+    pub fn new(inner: F) -> Self {
+        Self {
+            inner,
+            _x: PhantomData,
+        }
+    }
+
+    pub fn as_inner(&self) -> &F {
+        &self.inner
+    }
+
+    pub fn into_inner(self) -> F {
+        self.inner
+    }
+
+    pub fn as_mut(&mut self) -> &mut F {
+        &mut self.inner
+    }
+}
+
+impl<
+        T0,
+        T,
+        Y,
+        F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0> + AsPeakIter,
+    > AsPeakIter for NDFeatureAdapter<T0, T, Y, F>
+{
+    type Peak = F::Peak;
+
+    type Iter<'a>
+        = F::Iter<'a>
+    where
+        Self: 'a;
+
+    fn iter_peaks(&self) -> Self::Iter<'_> {
+        self.inner.iter_peaks()
+    }
+}
+
+impl<
+        P,
+        T0,
+        T,
+        Y,
+        F: NDFeatureLike<T, Y>
+            + TimeInterval<Y>
+            + TimeArray<Y>
+            + CoordinateLike<T0>
+            + BuildFromPeak<P>,
+    > BuildFromPeak<P> for NDFeatureAdapter<T0, T, Y, F>
+{
+    fn push_peak(&mut self, value: P, time: f64) {
+        self.inner.push_peak(value, time);
+    }
+}
+
+impl<const N: usize, T0, T, Y> FeatureLikeMut<T0, Y>
+    for NDFeatureAdapter<T0, T, Y, NDFeature<N, T, Y>>
+where
+    NDFeature<N, T, Y>: CoordinateLike<T0>,
+{
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
+        super::feature::IterMut::<T0, Y>::from_parts(
+            self.inner.dimensions[0].iter_mut(),
+            self.inner.time.iter_mut(),
+            self.inner.intensity.iter_mut(),
+        )
+    }
+
+    fn push<P: CoordinateLike<T0> + IntensityMeasurement>(&mut self, pt: &P, time: f64) {
+        let mut raw_pt = NDPoint::default();
+        raw_pt.time = time;
+        raw_pt.dimensions[0] = pt.coordinate();
+        raw_pt.intensity = pt.intensity();
+        self.inner.push_raw(raw_pt);
+    }
+
+    fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        let mut raw_pt = NDPoint::default();
+        raw_pt.time = y;
+        raw_pt.dimensions[0] = x;
+        raw_pt.intensity = z;
+        self.inner.push_raw(raw_pt);
+    }
+}
+
+impl<const N: usize, T0, T, Y> FeatureLikeMut<T0, Y>
+    for NDFeatureAdapter<T0, T, Y, ChargedFeatureWrapper<T, Y, NDFeature<N, T, Y>>>
+where
+    ChargedFeatureWrapper<T, Y, NDFeature<N, T, Y>>: CoordinateLike<T0>,
+{
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
+        let (inner, _) = self.inner.as_mut();
+        super::feature::IterMut::<T0, Y>::from_parts(
+            inner.dimensions[0].iter_mut(),
+            inner.time.iter_mut(),
+            inner.intensity.iter_mut(),
+        )
+    }
+
+    fn push<P: CoordinateLike<T0> + IntensityMeasurement>(&mut self, pt: &P, time: f64) {
+        let mut raw_pt = NDPoint::default();
+        raw_pt.time = time;
+        raw_pt.dimensions[0] = pt.coordinate();
+        raw_pt.intensity = pt.intensity();
+        self.inner.as_mut().0.push_raw(raw_pt);
+    }
+
+    fn push_raw(&mut self, x: f64, y: f64, z: f32) {
+        let mut raw_pt = NDPoint::default();
+        raw_pt.time = y;
+        raw_pt.dimensions[0] = x;
+        raw_pt.intensity = z;
+        self.inner.as_mut().0.push_raw(raw_pt);
     }
 }
 
