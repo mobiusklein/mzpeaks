@@ -2,6 +2,8 @@
 //! It represents something that is located at a constrained but varying coordinate system `X`
 //! over a sequentially ordered dimension `Y` with an abundance measure at each time point.
 //!
+//! N-dimensional features are considered an unstable feature while trying to find the right level
+//! of abstraction to provide.
 
 mod charged;
 mod feature;

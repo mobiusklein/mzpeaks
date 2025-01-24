@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, marker::PhantomData, ops::{Index, RangeBounds}};
+use std::{cmp::Ordering, marker::PhantomData, ops::{self, Index, RangeBounds}};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -538,6 +538,8 @@ impl<'a, X, Y> IntoIterator for ChargedFeatureView<'a, X, Y> {
     }
 }
 
+
+/// A generic wrapper around any feature-ish type with a charge associated with it.
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ChargedFeatureWrapper<X, Y, F: TimeInterval<Y> + TimeArray<Y>> {
@@ -545,6 +547,12 @@ pub struct ChargedFeatureWrapper<X, Y, F: TimeInterval<Y> + TimeArray<Y>> {
     charge: i32,
     _x: PhantomData<X>,
     _y: PhantomData<Y>,
+}
+
+impl<Dim, X, Y, F: TimeInterval<Y> + TimeArray<Y> + CoordinateLike<Dim>> CoordinateLike<Dim> for ChargedFeatureWrapper<X, Y, F> {
+    fn coordinate(&self) -> f64 {
+        self.inner.coordinate()
+    }
 }
 
 impl<X, Y, F: TimeInterval<Y> + TimeArray<Y>> TimeArray<Y> for ChargedFeatureWrapper<X, Y, F> {
@@ -695,13 +703,6 @@ impl<X, Y, F: PartialOrd<F> + TimeInterval<Y> + TimeArray<Y>> PartialOrd
     }
 }
 
-impl<X, Y, F: CoordinateLike<X> + TimeInterval<Y> + TimeArray<Y>> CoordinateLike<X>
-    for ChargedFeatureWrapper<X, Y, F>
-{
-    fn coordinate(&self) -> f64 {
-        self.inner.coordinate()
-    }
-}
 
 impl<X, Y, F: FeatureLike<X, Y> + TimeInterval<Y> + TimeArray<Y>> FeatureLike<X, Y>
     for ChargedFeatureWrapper<X, Y, F>
@@ -777,6 +778,14 @@ use super::{NDFeatureLike, NDFeatureLikeMut};
 
 #[derive(Debug, Default, Clone, PartialEq, PartialOrd)]
 pub struct Charged<T>(pub T, pub i32);
+
+impl<T> ops::Index<usize> for Charged<T> where T: ops::Index<usize> {
+    type Output = T::Output;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.0.index(index)
+    }
+}
 
 impl<T> AsRef<T> for Charged<T> {
     fn as_ref(&self) -> &T {

@@ -826,17 +826,17 @@ impl BuildFromPeak<IonMobilityAwareCentroidPeak> for NDFeature<2, (MZ, IonMobili
     }
 }
 
+impl From<NDFeature<2, (MZ, IonMobility), Time>>
+    for NDFeatureAdapter<MZ, (MZ, IonMobility), Time, NDFeature<2, (MZ, IonMobility), Time>>
+{
+    fn from(value: NDFeature<2, (MZ, IonMobility), Time>) -> Self {
+        NDFeatureAdapter::new(value)
+    }
+}
+
 // -------- Specific supporting specializations: mass + ion mobility ---------------
 
 use super::charged::ChargedFeatureWrapper;
-
-impl<const N: usize, T, Y> Index<usize> for Charged<NDPoint<N, T, Y>> {
-    type Output = f64;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.0.index(index)
-    }
-}
 
 pub struct IMMassPeakIter<'a> {
     iter: NDIter<'a, 2, (Mass, IonMobility), Time>,
@@ -898,6 +898,16 @@ impl BuildFromPeak<IonMobilityAwareDeconvolutedPeak>
         ));
     }
 }
+
+
+impl From<ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, IonMobility), Time>>>
+    for NDFeatureAdapter<Mass, (Mass, IonMobility), Time, ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, IonMobility), Time>>>
+{
+    fn from(value: ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, IonMobility), Time>>) -> Self {
+        NDFeatureAdapter::new(value)
+    }
+}
+
 
 /// An adapter from [`NDFeatureLike`] to [`FeatureLike`].
 ///
