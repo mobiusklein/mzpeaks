@@ -386,6 +386,8 @@ where
     }
 }
 
+/// Represent a single m/z coordinate and ion mobility coordinate with an
+/// intensity and an index.
 #[derive(Debug, Default, Clone, PartialEq, PartialOrd)]
 pub struct IonMobilityAwareCentroidPeak {
     pub mz: f64,
@@ -447,8 +449,8 @@ impl IonMobilityAwareCentroidPeak {
 }
 
 
-
-
+/// Represent a single neutral mass coordinate and ion mobility coordinate with an
+/// intensity, a known charge and an index.
 #[derive(Debug, Default, Clone, PartialEq, PartialOrd)]
 pub struct IonMobilityAwareDeconvolutedPeak {
     pub neutral_mass: f64,

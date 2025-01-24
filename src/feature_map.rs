@@ -10,7 +10,7 @@ use crate::{
 };
 use std::{
     marker::PhantomData,
-    ops::{self, Index, Range},
+    ops::{self, Range},
 };
 
 /// A two dimensional feature collection where features are sorted by the `X` dimension
@@ -25,6 +25,14 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
     /// Implement index access
     fn get_item(&self, i: usize) -> &T;
     fn get_slice(&self, i: ops::Range<usize>) -> &[T];
+
+    /// Implement index access without bounds checking.
+    ///
+    /// # Safety
+    /// Only use this method when we can guarantee from context that `i < self.len()`
+    unsafe fn get_item_unchecked(&self, i: usize) -> &T {
+        self.get_slice(0..self.len()).get_unchecked(i)
+    }
 
     fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
     where
@@ -346,6 +354,10 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLike<X, Y, T> for FeatureMap<X, Y, T>
 
     fn get_item(&self, i: usize) -> &T {
         &self.features[i]
+    }
+
+    unsafe fn get_item_unchecked(&self, i: usize) -> &T {
+        self.features.get_unchecked(i)
     }
 
     fn get_slice(&self, i: ops::Range<usize>) -> &[T] {
@@ -788,227 +800,6 @@ pub trait NDFeatureMapLikeMut<X, Y, T: NDFeatureLike<X, Y> + PartialOrd>:
 
     /// Sort the collection, updating the feature indexing.
     fn sort(&mut self);
-}
-
-#[derive(Debug, Default)]
-pub struct NDFeatureMap<X, Y, T: NDFeatureLike<X, Y>> {
-    features: Vec<T>,
-    _x: PhantomData<X>,
-    _y: PhantomData<Y>,
-}
-
-impl<X, Y, T: NDFeatureLike<X, Y>> NDFeatureMap<X, Y, T> {
-    /// Create a new [`FeatureMap`] from an existing `Vec<T>` and sorts
-    /// the newly created structure to ensure it is ordered by coordinate `X`
-    pub fn new(features: Vec<T>) -> Self {
-        let mut inst = Self::wrap(features);
-        inst.sort();
-        inst
-    }
-
-    pub fn first(&self) -> Option<&T> {
-        self.features.first()
-    }
-
-    pub fn last(&self) -> Option<&T> {
-        self.features.last()
-    }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.features
-    }
-
-    /// Create a new empty feature map
-    pub fn empty() -> Self {
-        Self {
-            features: Vec::new(),
-            _x: PhantomData,
-            _y: PhantomData,
-        }
-    }
-
-    /// Create a new [`FeatureMap`] from an existing `Vec<T>`, but does not actively
-    /// sort the collection. It is up to the caller to ensure that the provided `Vec`
-    /// is sorted or that it will be sorted prior to any of its search functionality
-    /// is used.
-    pub fn wrap(features: Vec<T>) -> Self {
-        Self {
-            features,
-            _x: PhantomData,
-            _y: PhantomData,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.features.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.features.is_empty()
-    }
-
-    /// Iterate over references to features
-    pub fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.features.iter()
-    }
-
-    /// Iterate over mutable reference to features
-    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
-        self.features.iter_mut()
-    }
-
-    /// Extract a subset of this [`NDFeatureMap`] that overlap the specified `y` coordinate
-    pub fn spanning(&self, y: f64) -> NDFeatureMap<X, Y, T>
-    where
-        T: Clone,
-    {
-        let subset: Vec<_> = self.iter().filter(|f| f.spans(y)).cloned().collect();
-        NDFeatureMap::wrap(subset)
-    }
-
-    pub fn search_by(&self, query: f64) -> Result<usize, usize> {
-        self.features
-            .binary_search_by(|feature| feature.coordinate()[0].total_cmp(&query))
-    }
-
-    pub fn from_iter<I: Iterator<Item = T>>(iter: I, sort: bool) -> Self {
-        let features = iter.collect();
-        if sort {
-            Self::new(features)
-        } else {
-            Self::wrap(features)
-        }
-    }
-
-    pub fn earliest_time(&self) -> Option<f64> {
-        self.features
-            .iter()
-            .fold(Option::<f64>::None, |prev, feat| {
-                match (prev, feat.start_time()) {
-                    (Some(prev), Some(cur)) => Some(prev.min(cur)),
-                    (None, Some(cur)) => Some(cur),
-                    (_, _) => prev,
-                }
-            })
-    }
-
-    pub fn latest_time(&self) -> Option<f64> {
-        self.features
-            .iter()
-            .fold(Option::<f64>::None, |prev, feat| {
-                match (prev, feat.start_time()) {
-                    (Some(prev), Some(cur)) => Some(prev.max(cur)),
-                    (None, Some(cur)) => Some(cur),
-                    (_, _) => prev,
-                }
-            })
-    }
-}
-
-impl<X, Y, T: NDFeatureLike<X, Y>> Index<usize> for NDFeatureMap<X, Y, T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.features[index]
-    }
-}
-
-impl<X, Y, T: NDFeatureLike<X, Y>> NDFeatureMapLike<X, Y, T> for NDFeatureMap<X, Y, T> {
-    fn search_by(&self, query: f64) -> Result<usize, usize> {
-        self.search_by(query)
-    }
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
-
-    fn get_item(&self, i: usize) -> &T {
-        &self.features[i]
-    }
-
-    fn get_slice(&self, i: ops::Range<usize>) -> &[T] {
-        &self.features[i]
-    }
-
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
-    where
-        T: 'a,
-    {
-        self.iter()
-    }
-}
-
-impl<X, Y, T: NDFeatureLike<X, Y>> NDFeatureMapLikeMut<X, Y, T> for NDFeatureMap<X, Y, T> {
-    fn push(&mut self, feature: T) {
-        if self.is_empty() {
-            self.features.push(feature)
-        } else {
-            let is_tail =
-                self.features.last().as_ref().unwrap().coordinate() <= feature.coordinate();
-            self.features.push(feature);
-            if !is_tail {
-                self.sort();
-            }
-        }
-    }
-
-    fn sort(&mut self) {
-        self.features.sort_by(|x, y| x.partial_cmp(y).unwrap())
-    }
-}
-
-#[cfg(feature = "rayon")]
-mod parallel_nd {
-    use super::*;
-    use rayon::prelude::*;
-
-    impl<X: Send + Sync, Y: Send + Sync, T: NDFeatureLike<X, Y> + Sync + Send> NDFeatureMap<X, Y, T> {
-        pub fn par_iter(&self) -> rayon::slice::Iter<'_, T> {
-            self.features.par_iter()
-        }
-
-        pub fn par_iter_mut(&mut self) -> rayon::slice::IterMut<'_, T> {
-            self.features.par_iter_mut()
-        }
-
-        pub fn into_par_iter(self) -> rayon::vec::IntoIter<T> {
-            self.features.into_par_iter()
-        }
-
-        pub fn par_sort(&mut self) {
-            self.features.par_sort_by(|x, y| x.partial_cmp(y).unwrap())
-        }
-    }
-
-    impl<X: Send + Sync, Y: Send + Sync, T: NDFeatureLike<X, Y> + Sync + Send> ParallelExtend<T>
-        for NDFeatureMap<X, Y, T>
-    {
-        fn par_extend<I>(&mut self, par_iter: I)
-        where
-            I: IntoParallelIterator<Item = T>,
-        {
-            self.features.par_extend(par_iter);
-            self.par_sort();
-        }
-    }
-
-    impl<X: Send + Sync, Y: Send + Sync, T: NDFeatureLike<X, Y> + Sync + Send>
-        FromParallelIterator<T> for NDFeatureMap<X, Y, T>
-    {
-        fn from_par_iter<I>(par_iter: I) -> Self
-        where
-            I: IntoParallelIterator<Item = T>,
-        {
-            let features: Vec<_> = par_iter.into_par_iter().collect();
-            let mut this = Self::wrap(features);
-            this.par_sort();
-            this
-        }
-    }
 }
 
 #[cfg(test)]
