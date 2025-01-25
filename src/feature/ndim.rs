@@ -920,7 +920,7 @@ pub struct NDFeatureAdapter<
     T0,
     T,
     Y,
-    F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>,
+    F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + PartialOrd, //+ CoordinateLike<T0>,
 > {
     inner: F,
     _x: PhantomData<(T, Y, T0)>,
@@ -966,11 +966,11 @@ impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + Coordin
     }
 }
 
-impl<T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
-    CoordinateLike<T0> for NDFeatureAdapter<T0, T, Y, F>
+impl<Q, T0, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<T0>>
+    CoordinateLike<Q> for NDFeatureAdapter<T0, T, Y, F> where F: CoordinateLike<Q>
 {
     fn coordinate(&self) -> f64 {
-        <F as CoordinateLike<T0>>::coordinate(&self.inner)
+        <F as CoordinateLike<Q>>::coordinate(&self.inner)
     }
 }
 
