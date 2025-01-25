@@ -335,16 +335,16 @@ impl<X, Y> IntoIterator for ChargedFeature<X, Y> {
 impl<Y, T: MZLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T>
     for ChargedFeature<MZ, Y>
 {
-    fn push_peak(&mut self, value: T, time: f64) {
-        self.push(&value, time);
+    fn push_peak(&mut self, value: &T, time: f64) {
+        self.push(value, time);
     }
 }
 
 impl<Y, T: MassLocated + IntensityMeasurement + KnownCharge> BuildFromPeak<T>
     for ChargedFeature<Mass, Y>
 {
-    fn push_peak(&mut self, value: T, time: f64) {
-        self.push(&value, time);
+    fn push_peak(&mut self, value: &T, time: f64) {
+        self.push(value, time);
     }
 }
 

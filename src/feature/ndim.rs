@@ -817,7 +817,7 @@ impl AsPeakIter for NDFeature<2, (MZ, IonMobility), Time> {
 }
 
 impl BuildFromPeak<IonMobilityAwareCentroidPeak> for NDFeature<2, (MZ, IonMobility), Time> {
-    fn push_peak(&mut self, value: IonMobilityAwareCentroidPeak, time: f64) {
+    fn push_peak(&mut self, value: &IonMobilityAwareCentroidPeak, time: f64) {
         self.push_raw(NDPoint::new(
             [value.mz, value.ion_mobility],
             time,
@@ -887,7 +887,7 @@ impl AsPeakIter
 impl BuildFromPeak<IonMobilityAwareDeconvolutedPeak>
     for ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, IonMobility), Time>>
 {
-    fn push_peak(&mut self, value: IonMobilityAwareDeconvolutedPeak, time: f64) {
+    fn push_peak(&mut self, value: &IonMobilityAwareDeconvolutedPeak, time: f64) {
         self.push_raw(Charged::new(
             NDPoint::new(
                 [value.neutral_mass(), value.ion_mobility()],
@@ -1101,7 +1101,7 @@ impl<
             + BuildFromPeak<P>,
     > BuildFromPeak<P> for NDFeatureAdapter<T0, T, Y, F>
 {
-    fn push_peak(&mut self, value: P, time: f64) {
+    fn push_peak(&mut self, value: &P, time: f64) {
         self.inner.push_peak(value, time);
     }
 }

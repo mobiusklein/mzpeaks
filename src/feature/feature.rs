@@ -316,8 +316,8 @@ impl<Y> AsPeakIter for Feature<MZ, Y> {
 }
 
 impl<X, Y, T: CoordinateLike<X> + IntensityMeasurement> BuildFromPeak<T> for Feature<X, Y> {
-    fn push_peak(&mut self, value: T, time: f64) {
-        self.push(&value, time);
+    fn push_peak(&mut self, value: &T, time: f64) {
+        self.push(value, time);
     }
 }
 

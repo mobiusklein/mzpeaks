@@ -102,12 +102,12 @@ pub trait AsPeakIter {
 /// Build a [`FeatureLikeMut`] type from a sequence of `(peak, time)` pairs
 pub trait BuildFromPeak<T> {
     /// Like [`FeatureLikeMut::push`] but permitting specialized behavior
-    fn push_peak(&mut self, value: T, time: f64);
+    fn push_peak(&mut self, value: &T, time: f64);
 
     /// Like [`Extend`] but uses [`BuildFromPeak::push_peak`]
     fn extend_from_peaks<I: IntoIterator<Item = (T, f64)>>(&mut self, iter: I) {
         for (p, t) in iter {
-            self.push_peak(p, t);
+            self.push_peak(&p, t);
         }
     }
 }
