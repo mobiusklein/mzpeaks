@@ -914,7 +914,8 @@ impl From<ChargedFeatureWrapper<(Mass, IonMobility), Time, NDFeature<2, (Mass, I
 /// # Note
 /// Assumes dimension `T0` is the 0th dimension in `T`, but this cannot be
 /// enforced as Rust lacks variadic generics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NDFeatureAdapter<
     T0,
     T,
