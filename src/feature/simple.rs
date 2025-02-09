@@ -135,7 +135,7 @@ impl<X, Y> SimpleFeature<X, Y> {
     }
 }
 
-impl<'a, X, Y> TimeArray<Y> for SimpleFeature<X, Y> {
+impl<X, Y> TimeArray<Y> for SimpleFeature<X, Y> {
     fn time_view(&self) -> &[f64] {
         &self.y
     }
@@ -376,7 +376,7 @@ pub struct SimpleFeatureView<'a, X, Y> {
     _y: PhantomData<Y>,
 }
 
-impl<'a, X, Y> CoArrayOps for SimpleFeatureView<'a, X, Y> {}
+impl<X, Y> CoArrayOps for SimpleFeatureView<'_, X, Y> {}
 
 impl<'a, X, Y> SimpleFeatureView<'a, X, Y> {
     pub fn new(label: f64, y: &'a [f64], z: &'a [f32]) -> Self {
@@ -434,7 +434,7 @@ impl<'a, X, Y> SimpleFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> PartialEq for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> PartialEq for SimpleFeatureView<'_, X, Y> {
     fn eq(&self, other: &Self) -> bool {
         self.label == other.label
             && self.y == other.y
@@ -444,7 +444,7 @@ impl<'a, X, Y> PartialEq for SimpleFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> PartialOrd for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> PartialOrd for SimpleFeatureView<'_, X, Y> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self.label.partial_cmp(&other.label) {
             Some(core::cmp::Ordering::Equal) => {}
@@ -458,13 +458,13 @@ impl<'a, X, Y> PartialOrd for SimpleFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> CoordinateLike<X> for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> CoordinateLike<X> for SimpleFeatureView<'_, X, Y> {
     fn coordinate(&self) -> f64 {
         self.label
     }
 }
 
-impl<'a, X, Y> TimeInterval<Y> for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> TimeInterval<Y> for SimpleFeatureView<'_, X, Y> {
     fn start_time(&self) -> Option<f64> {
         self.y.first().copied()
     }
@@ -501,13 +501,13 @@ impl<'a, X, Y> TimeInterval<Y> for SimpleFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> IntensityMeasurement for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> IntensityMeasurement for SimpleFeatureView<'_, X, Y> {
     fn intensity(&self) -> f32 {
         self.z.iter().sum()
     }
 }
 
-impl<'a, X, Y> FeatureLike<X, Y> for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> FeatureLike<X, Y> for SimpleFeatureView<'_, X, Y> {
     fn len(&self) -> usize {
         self.y.len()
     }
@@ -620,12 +620,12 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for SimpleFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> TimeArray<Y> for SimpleFeatureView<'a, X, Y> {
+impl<X, Y> TimeArray<Y> for SimpleFeatureView<'_, X, Y> {
     fn time_view(&self) -> &[f64] {
         self.y
     }
 
     fn intensity_view(&self) -> &[f32] {
-        &self.z
+        self.z
     }
 }

@@ -58,7 +58,7 @@ pub trait TimeInterval<T> {
     }
 }
 
-impl<'a, T, U: TimeInterval<T>> TimeInterval<T> for &'a U {
+impl<T, U: TimeInterval<T>> TimeInterval<T> for &U {
     fn start_time(&self) -> Option<f64> {
         (*self).start_time()
     }
@@ -117,7 +117,7 @@ pub trait PeakSeries: BuildFromPeak<Self::Peak> + AsPeakIter {}
 
 impl<T, F: AsPeakIter<Peak = T> + BuildFromPeak<T>> PeakSeries for F {}
 
-impl<'a, T, U: TimeArray<T>> TimeArray<T> for &'a U {
+impl<T, U: TimeArray<T>> TimeArray<T> for &U {
     fn time_view(&self) -> &[f64] {
         (*self).time_view()
     }
@@ -141,7 +141,7 @@ pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + Coordinate
 
     /// Get an immutable reference to feature data at a specified index
     fn at(&self, index: usize) -> Option<(f64, f64, f32)> {
-        self.iter().nth(index).map(|(x, y, z)| (x, y, z))
+        self.iter().nth(index)
     }
 
     /// Retrieve the first time point, if it exists
@@ -165,7 +165,7 @@ pub trait FeatureLike<X, Y>: IntensityMeasurement + TimeInterval<Y> + Coordinate
     }
 }
 
-impl<'a, X, Y, T: FeatureLike<X, Y> + TimeInterval<Y>> FeatureLike<X, Y> for &'a T {
+impl<X, Y, T: FeatureLike<X, Y> + TimeInterval<Y>> FeatureLike<X, Y> for &T {
     fn len(&self) -> usize {
         (*self).len()
     }
@@ -342,7 +342,7 @@ pub trait SplittableFeatureLike<'a, X, Y>: FeatureLike<X, Y> {
     {
         let mut prev = self.at(0).unwrap_or_default();
         let mut mask = Vec::with_capacity(self.len());
-        for cur in self.iter().map(|(x, y, z)| (x, y, z)) {
+        for cur in self.iter() {
             mask.push(!f(prev, cur));
             prev = cur;
         }

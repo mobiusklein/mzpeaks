@@ -282,10 +282,10 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
     /// Return the peak nearest to `query` within `error_tolerance` in
     /// this peak collection, or `None`.
     fn has_peak(&self, query: f64, error_tolerance: Tolerance) -> Option<&T> {
-        return match self.search(query, error_tolerance) {
+        match self.search(query, error_tolerance) {
             Some(j) => Some(self.get_item(j)),
             None => None,
-        };
+        }
     }
 
     #[inline]
@@ -370,7 +370,7 @@ pub trait PeakCollection<T: CoordinateLike<C>, C>: ops::Index<usize, Output = T>
             lower_index += 1;
         }
         let c = lower_index..upper_index + 1;
-        return self.get_slice(c);
+        self.get_slice(c)
     }
 
     /// Given a **sorted** list of `query` values that are on the same coordinate system `C`, find
@@ -440,8 +440,8 @@ pub struct SearchSortedIter<
     _t: PhantomData<T>,
 }
 
-impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>> Iterator
-    for SearchSortedIter<'a, C, T, P, Q>
+impl<C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>> Iterator
+    for SearchSortedIter<'_, C, T, P, Q>
 {
     type Item = (usize, usize);
 
@@ -467,13 +467,13 @@ impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
             query_n,
             query_lower_bound: 0.0,
             query_upper_bound: 0.0,
-            query_hit_range: (0..0).into_iter(),
+            query_hit_range: (0..0),
             _c: PhantomData,
             _t: PhantomData,
         };
         if query_n > 0 {
             this.update_bounds();
-            this.query_hit_range = this.seek_next_matches().into_iter();
+            this.query_hit_range = this.seek_next_matches();
         }
         this
     }
@@ -487,7 +487,7 @@ impl<'a, C, T: CoordinateLike<C>, P: PeakCollection<T, C>, Q: CoordinateLike<C>>
         if self.query_i < self.query_n.saturating_sub(1) {
             self.query_i += 1;
             self.update_bounds();
-            self.query_hit_range = self.seek_next_matches().into_iter();
+            self.query_hit_range = self.seek_next_matches();
             true
         } else {
             false
@@ -968,7 +968,7 @@ impl<'a, P: IndexedCoordinate<C>, C> PeakSetView<'a, P, C> {
     }
 }
 
-impl<'a, P: IndexedCoordinate<C>, C> ops::Index<usize> for PeakSetView<'a, P, C> {
+impl<P: IndexedCoordinate<C>, C> ops::Index<usize> for PeakSetView<'_, P, C> {
     type Output = P;
 
     fn index(&self, i: usize) -> &Self::Output {
@@ -978,7 +978,7 @@ impl<'a, P: IndexedCoordinate<C>, C> ops::Index<usize> for PeakSetView<'a, P, C>
 
 impl_slicing!(PeakSetView<'a, P, C>, 'a, P: IndexedCoordinate<C>, C);
 
-impl<'a, P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'a, P, C> {
+impl<P: IndexedCoordinate<C>, C> PeakCollection<P, C> for PeakSetView<'_, P, C> {
     #[inline]
     fn len(&self) -> usize {
         self.peaks.len()
@@ -1267,7 +1267,7 @@ mod test {
         assert!(p.is_none());
 
         let p = peaks.all_peaks_for(500.0, Tolerance::Da(1.0));
-        assert!(p.len() == 0);
+        assert!(p.is_empty());
     }
 
     #[test]

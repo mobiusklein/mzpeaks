@@ -11,7 +11,7 @@ use crate::{
 
 use super::traits::{FeatureLike, FeatureLikeMut, SplittableFeatureLike, TimeInterval};
 use super::{
-    feature::{Feature, FeatureView, Iter, IterMut},
+    base::{Feature, FeatureView, Iter, IterMut},
     traits::BuildFromPeak,
     AsPeakIter, TimeArray,
 };
@@ -253,7 +253,7 @@ impl<X, Y, P: CoordinateLike<X> + IntensityMeasurement + KnownCharge> FromIterat
     }
 }
 
-impl<'a, X, Y> TimeArray<Y> for ChargedFeature<X, Y> {
+impl<X, Y> TimeArray<Y> for ChargedFeature<X, Y> {
     fn time_view(&self) -> &[f64] {
         self.feature.time_view()
     }
@@ -282,7 +282,7 @@ impl<'a, Y> DeconvolutedPeakIter<'a, Y> {
     }
 }
 
-impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
+impl<Y> Iterator for DeconvolutedPeakIter<'_, Y> {
     type Item = (DeconvolutedPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -306,13 +306,13 @@ impl<'a, Y> Iterator for DeconvolutedPeakIter<'a, Y> {
     }
 }
 
-impl<'a, Y> ExactSizeIterator for DeconvolutedPeakIter<'a, Y> {
+impl<Y> ExactSizeIterator for DeconvolutedPeakIter<'_, Y> {
     fn len(&self) -> usize {
         self.point_iter.len()
     }
 }
 
-impl<'a, Y> DoubleEndedIterator for DeconvolutedPeakIter<'a, Y> {
+impl<Y> DoubleEndedIterator for DeconvolutedPeakIter<'_, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some((mass, time, intensity)) = self.point_iter.next_back() {
             Some((DeconvolutedPeak::new(mass, intensity, self.charge, 0), time))
@@ -382,13 +382,13 @@ impl<'a, X, Y> TimeInterval<Y> for ChargedFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> PartialEq for ChargedFeatureView<'a, X, Y> {
+impl<X, Y> PartialEq for ChargedFeatureView<'_, X, Y> {
     fn eq(&self, other: &Self) -> bool {
         self.feature == other.feature && self.charge == other.charge
     }
 }
 
-impl<'a, X, Y> PartialOrd for ChargedFeatureView<'a, X, Y> {
+impl<X, Y> PartialOrd for ChargedFeatureView<'_, X, Y> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self.feature.partial_cmp(&other.feature) {
             Some(core::cmp::Ordering::Equal) => {}
@@ -398,19 +398,19 @@ impl<'a, X, Y> PartialOrd for ChargedFeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> CoordinateLike<X> for ChargedFeatureView<'a, X, Y> {
+impl<X, Y> CoordinateLike<X> for ChargedFeatureView<'_, X, Y> {
     fn coordinate(&self) -> f64 {
         self.feature.coordinate()
     }
 }
 
-impl<'a, X, Y> IntensityMeasurement for ChargedFeatureView<'a, X, Y> {
+impl<X, Y> IntensityMeasurement for ChargedFeatureView<'_, X, Y> {
     fn intensity(&self) -> f32 {
         self.feature.intensity()
     }
 }
 
-impl<'a, X, Y> KnownCharge for ChargedFeatureView<'a, X, Y> {
+impl<X, Y> KnownCharge for ChargedFeatureView<'_, X, Y> {
     fn charge(&self) -> i32 {
         self.charge
     }
@@ -518,7 +518,7 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for ChargedFeatureView<'a, X, Y> 
     }
 }
 
-impl<'a, X, Y> TimeArray<Y> for ChargedFeatureView<'a, X, Y> {
+impl<X, Y> TimeArray<Y> for ChargedFeatureView<'_, X, Y> {
     fn time_view(&self) -> &[f64] {
         self.feature.time_view()
     }

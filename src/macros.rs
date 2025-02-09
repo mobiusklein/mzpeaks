@@ -1,6 +1,5 @@
 /// A set of code generation macros to make a type behave as [`CentroidLike`](crate::CentroidLike)
 /// or [`DeconvolutedCentroidLike`](crate::DeconvolutedCentroidLike).
-
 #[macro_export]
 macro_rules! implement_mz_coord {
     ($t:ty) => {

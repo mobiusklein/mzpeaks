@@ -268,21 +268,14 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
             let start = self.nodes[insert_in].start();
             let end = self.nodes[insert_in].end();
             let mut up = self.nodes[insert_in].parent;
-            loop {
-                match up {
-                    Some(parent_index) => {
-                        if self.nodes[parent_index].start > start {
-                            self.nodes[parent_index].start = start;
-                        }
-                        if self.nodes[parent_index].end < end {
-                            self.nodes[parent_index].end = end;
-                        }
-                        up = self.nodes[parent_index].parent;
-                    }
-                    None => {
-                        break;
-                    }
+            while let Some(parent_index) = up {
+                if self.nodes[parent_index].start > start {
+                    self.nodes[parent_index].start = start;
                 }
+                if self.nodes[parent_index].end < end {
+                    self.nodes[parent_index].end = end;
+                }
+                up = self.nodes[parent_index].parent;
             }
         }
         insert_in
@@ -839,8 +832,8 @@ impl<
                 }
                 let node_i = self.current_node.unwrap();
                 let item_i = self.find_value_from_node(self.current_node.unwrap());
-                if item_i.is_some() {
-                    return Some((node_i, item_i.unwrap()));
+                if let Some(item_i1) = item_i {
+                    return Some((node_i, item_i1));
                 }
             }
         }

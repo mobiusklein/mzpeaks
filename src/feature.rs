@@ -6,7 +6,7 @@
 //! of abstraction to provide.
 
 mod charged;
-mod feature;
+mod base;
 mod ndim;
 mod simple;
 mod traits;
@@ -22,7 +22,7 @@ pub use charged::{
     DeconvolutedPeakIter, DeconvolvedIMSFeature, DeconvolvedLCMSFeature,
 };
 
-pub use feature::{
+pub use base::{
     Feature, FeatureView, IMSFeature, IntoIter, Iter, IterMut, LCMSFeature, MZPeakIter,
 };
 
@@ -30,6 +30,7 @@ pub use simple::{SimpleFeature, SimpleFeatureView};
 
 pub use ndim::{NDFeature, NDIter, NDIterMut, NDPoint, NDPointMutRef, NDFeatureAdapter};
 
+#[allow(clippy::excessive_precision)]
 #[cfg(test)]
 mod test {
     use super::*;
@@ -354,7 +355,7 @@ mod test {
         assert!(feature.iter_mut().next_back().is_some());
         assert_eq!(feature.charge(), 2);
         let mut feature2: ChargedFeature<Mass, Time> = ChargedFeature::empty(2);
-        feature2.extend(feature.into_iter());
+        feature2.extend(feature);
         let (_pt, t) = feature2.iter_peaks().nth(9).unwrap();
         let e = 128.4700598232 - t;
         assert!(e.abs() < 1e-3);

@@ -259,7 +259,7 @@ pub struct CentroidRef<'a, C: CentroidLike> {
     index: IndexType,
 }
 
-impl<'a, C: CentroidLike> PartialEq for CentroidRef<'a, C> {
+impl<C: CentroidLike> PartialEq for CentroidRef<'_, C> {
     fn eq(&self, other: &Self) -> bool {
         if (self.mz() - other.coordinate()).abs() > 1e-3
             || (self.intensity() - other.intensity()).abs() > 1e-3
@@ -270,7 +270,7 @@ impl<'a, C: CentroidLike> PartialEq for CentroidRef<'a, C> {
     }
 }
 
-impl<'a, C: CentroidLike> PartialOrd for CentroidRef<'a, C> {
+impl<C: CentroidLike> PartialOrd for CentroidRef<'_, C> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(
             self.mz()
@@ -286,20 +286,20 @@ impl<'a, C: CentroidLike> CentroidRef<'a, C> {
     }
 }
 
-impl<'a, C: CentroidLike> CoordinateLike<MZ> for CentroidRef<'a, C> {
+impl<C: CentroidLike> CoordinateLike<MZ> for CentroidRef<'_, C> {
     fn coordinate(&self) -> f64 {
         self.inner.mz()
     }
 }
 
-impl<'a, C: CentroidLike> IntensityMeasurement for CentroidRef<'a, C> {
+impl<C: CentroidLike> IntensityMeasurement for CentroidRef<'_, C> {
     #[inline]
     fn intensity(&self) -> f32 {
         self.inner.intensity()
     }
 }
 
-impl<'a, C: CentroidLike> IndexedCoordinate<MZ> for CentroidRef<'a, C> {
+impl<C: CentroidLike> IndexedCoordinate<MZ> for CentroidRef<'_, C> {
     #[inline]
     fn get_index(&self) -> IndexType {
         self.index
@@ -320,7 +320,7 @@ pub struct DeconvolutedCentroidRef<'a, D: DeconvolutedCentroidLike> {
     index: IndexType,
 }
 
-impl<'a, D: DeconvolutedCentroidLike> PartialEq for DeconvolutedCentroidRef<'a, D> {
+impl<D: DeconvolutedCentroidLike> PartialEq for DeconvolutedCentroidRef<'_, D> {
     fn eq(&self, other: &Self) -> bool {
         if (self.neutral_mass() - other.coordinate()).abs() > 1e-3
             || self.charge() != other.charge()
@@ -332,7 +332,7 @@ impl<'a, D: DeconvolutedCentroidLike> PartialEq for DeconvolutedCentroidRef<'a, 
     }
 }
 
-impl<'a, D: DeconvolutedCentroidLike> PartialOrd for DeconvolutedCentroidRef<'a, D> {
+impl<D: DeconvolutedCentroidLike> PartialOrd for DeconvolutedCentroidRef<'_, D> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(
             self.neutral_mass()
@@ -348,26 +348,26 @@ impl<'a, D: DeconvolutedCentroidLike> DeconvolutedCentroidRef<'a, D> {
     }
 }
 
-impl<'a, D: DeconvolutedCentroidLike> CoordinateLike<Mass> for DeconvolutedCentroidRef<'a, D> {
+impl<D: DeconvolutedCentroidLike> CoordinateLike<Mass> for DeconvolutedCentroidRef<'_, D> {
     fn coordinate(&self) -> f64 {
         self.inner.neutral_mass()
     }
 }
 
-impl<'a, D: DeconvolutedCentroidLike> KnownCharge for DeconvolutedCentroidRef<'a, D> {
+impl<D: DeconvolutedCentroidLike> KnownCharge for DeconvolutedCentroidRef<'_, D> {
     fn charge(&self) -> i32 {
         self.inner.charge()
     }
 }
 
-impl<'a, D: DeconvolutedCentroidLike> IntensityMeasurement for DeconvolutedCentroidRef<'a, D> {
+impl<D: DeconvolutedCentroidLike> IntensityMeasurement for DeconvolutedCentroidRef<'_, D> {
     #[inline]
     fn intensity(&self) -> f32 {
         self.inner.intensity()
     }
 }
 
-impl<'a, D: DeconvolutedCentroidLike> IndexedCoordinate<Mass> for DeconvolutedCentroidRef<'a, D> {
+impl<D: DeconvolutedCentroidLike> IndexedCoordinate<Mass> for DeconvolutedCentroidRef<'_, D> {
     #[inline]
     fn get_index(&self) -> IndexType {
         self.index
@@ -377,7 +377,7 @@ impl<'a, D: DeconvolutedCentroidLike> IndexedCoordinate<Mass> for DeconvolutedCe
     }
 }
 
-impl<'a, D: DeconvolutedCentroidLike> CoordinateLike<MZ> for DeconvolutedCentroidRef<'a, D>
+impl<D: DeconvolutedCentroidLike> CoordinateLike<MZ> for DeconvolutedCentroidRef<'_, D>
 where
     D: CoordinateLike<MZ>,
 {
@@ -607,7 +607,7 @@ mod test {
         assert!((MZ::coordinate(&x) - 400.68725848027003).abs() < 1e-6);
 
         let mut y = x.as_centroid();
-        *(&mut y).intensity_mut() += 500.0;
+        *y.intensity_mut() += 500.0;
         assert!(x < y);
         assert!(y > x);
         assert!(x == x);

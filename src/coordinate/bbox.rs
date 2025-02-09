@@ -358,6 +358,15 @@ impl<V1: HasProximity + Num, V2: HasProximity + Num, T: Span2D<DimType1 = V1, Di
     }
 }
 
+type ContainsBBoxIter<'a, V1, V2, T> = QueryIter<
+        'a,
+        V1,
+        V2,
+        T,
+        BoundingBox<V1, V2>,
+        ContainsPredicate<V1, V2, T, BoundingBox<V1, V2>>,
+    >;
+
 impl<
         'a,
         V1: HasProximity + Num,
@@ -430,14 +439,7 @@ impl<
     pub fn contains_iter(
         &'a self,
         value: (V1, V2),
-    ) -> QueryIter<
-        'a,
-        V1,
-        V2,
-        T,
-        BoundingBox<V1, V2>,
-        ContainsPredicate<V1, V2, T, BoundingBox<V1, V2>>,
-    > {
+    ) -> ContainsBBoxIter<'a, V1, V2, T> {
         let v = BoundingBox::new(value, value);
         QueryIter::new(self, v)
     }
@@ -450,15 +452,11 @@ impl<
             return;
         }
 
-        let deepest_node = match self
+        let deepest_node = self
             .nodes_overlaps(&item)
             .into_iter()
             .map(|(i, node)| i)
-            .max()
-        {
-            Some(i) => i,
-            None => 0,
-        };
+            .max().unwrap_or(0);
 
         let (needs_splitting, mut children_idxes) = {
             let node = self.nodes.get_mut(deepest_node).unwrap();
@@ -587,13 +585,12 @@ pub struct QueryIter<
 }
 
 impl<
-        'a,
         V1: Num + HasProximity,
         V2: Num + HasProximity,
         T: Span2D<DimType1 = V1, DimType2 = V2>,
         Q: Span2D<DimType1 = V1, DimType2 = V2>,
         P: NodeSelectorCriterion<V1, V2, T, Q>,
-    > FusedIterator for QueryIter<'a, V1, V2, T, Q, P>
+    > FusedIterator for QueryIter<'_, V1, V2, T, Q, P>
 {
 }
 
@@ -954,14 +951,10 @@ mod test {
             .map(|b| split_bbox(&b))
             .as_flattened()
             .iter()
-            .map(split_bbox)
-            .flatten()
-            .map(|b| split_bbox(&b))
-            .flatten()
-            .map(|b| split_bbox(&b))
-            .flatten()
-            .map(|b| split_bbox(&b))
-            .flatten()
+            .flat_map(split_bbox)
+            .flat_map(|b| split_bbox(&b))
+            .flat_map(|b| split_bbox(&b))
+            .flat_map(|b| split_bbox(&b))
             .collect();
         let mut tree = QuadTree::empty();
         for bbox in boxes {
@@ -972,7 +965,7 @@ mod test {
 
         let ext = BoundingBox::new((16.0, 13.0), (18.0, 15.0));
         let before = tree.overlaps(&ext).len();
-        tree.insert(ext.clone());
+        tree.insert(ext);
         let after = tree.overlaps(&ext);
         assert_eq!(before + 1, after.len());
         let after = tree.overlaps_iter(&ext);

@@ -380,7 +380,7 @@ pub struct Iter<'a, X, Y> {
     _y: PhantomData<Y>,
 }
 
-impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
+impl<X, Y> Iterator for Iter<'_, X, Y> {
     type Item = (f64, f64, f32);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -406,13 +406,13 @@ impl<'a, X, Y> Iterator for Iter<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> ExactSizeIterator for Iter<'a, X, Y> {
+impl<X, Y> ExactSizeIterator for Iter<'_, X, Y> {
     fn len(&self) -> usize {
         self.xiter.len()
     }
 }
 
-impl<'a, X, Y> DoubleEndedIterator for Iter<'a, X, Y> {
+impl<X, Y> DoubleEndedIterator for Iter<'_, X, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let x = self.xiter.next_back();
         let y = self.yiter.next_back();
@@ -424,7 +424,7 @@ impl<'a, X, Y> DoubleEndedIterator for Iter<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> FusedIterator for Iter<'a, X, Y> {}
+impl<X, Y> FusedIterator for Iter<'_, X, Y> {}
 
 impl<'a, X, Y> Iter<'a, X, Y> {
     pub fn new(source: &'a Feature<X, Y>) -> Self {
@@ -451,7 +451,7 @@ impl<'a, Y> MZPeakIter<'a, Y> {
     }
 }
 
-impl<'a, Y> Iterator for MZPeakIter<'a, Y> {
+impl<Y> Iterator for MZPeakIter<'_, Y> {
     type Item = (CentroidPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -475,13 +475,13 @@ impl<'a, Y> Iterator for MZPeakIter<'a, Y> {
     }
 }
 
-impl<'a, Y> ExactSizeIterator for MZPeakIter<'a, Y> {
+impl<Y> ExactSizeIterator for MZPeakIter<'_, Y> {
     fn len(&self) -> usize {
         self.source.len()
     }
 }
 
-impl<'a, Y> DoubleEndedIterator for MZPeakIter<'a, Y> {
+impl<Y> DoubleEndedIterator for MZPeakIter<'_, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let xyz = self.source.next_back();
         match xyz {
@@ -491,7 +491,7 @@ impl<'a, Y> DoubleEndedIterator for MZPeakIter<'a, Y> {
     }
 }
 
-impl<'a, Y> FusedIterator for MZPeakIter<'a, Y> {}
+impl<Y> FusedIterator for MZPeakIter<'_, Y> {}
 
 /// An iterator producing mutable references to feature data
 /// as owned by [`Feature`].
@@ -531,7 +531,7 @@ impl<'a, X, Y> Iterator for IterMut<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> ExactSizeIterator for IterMut<'a, X, Y> {
+impl<X, Y> ExactSizeIterator for IterMut<'_, X, Y> {
     fn len(&self) -> usize {
         self.xiter.len()
     }
@@ -561,7 +561,7 @@ impl<'a, X, Y> IterMut<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> DoubleEndedIterator for IterMut<'a, X, Y> {
+impl<X, Y> DoubleEndedIterator for IterMut<'_, X, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let x = self.xiter.next_back();
         let y = self.yiter.next_back();
@@ -573,7 +573,7 @@ impl<'a, X, Y> DoubleEndedIterator for IterMut<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> FusedIterator for IterMut<'a, X, Y> {}
+impl<X, Y> FusedIterator for IterMut<'_, X, Y> {}
 
 /// A consuming iterator for [`Feature`]
 pub struct IntoIter<X, Y> {
@@ -725,7 +725,7 @@ pub struct FeatureView<'a, X, Y> {
     _y: PhantomData<Y>,
 }
 
-impl<'a, X, Y> CoArrayOps for FeatureView<'a, X, Y> {}
+impl<X, Y> CoArrayOps for FeatureView<'_, X, Y> {}
 
 impl<'a, X, Y> FeatureView<'a, X, Y> {
     pub fn new(x: &'a [f64], y: &'a [f64], z: &'a [f32]) -> Self {
@@ -804,7 +804,7 @@ impl<'a, X, Y> FeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> PartialEq for FeatureView<'a, X, Y> {
+impl<X, Y> PartialEq for FeatureView<'_, X, Y> {
     fn eq(&self, other: &Self) -> bool {
         self.x == other.x
             && self.y == other.y
@@ -814,7 +814,7 @@ impl<'a, X, Y> PartialEq for FeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> PartialOrd for FeatureView<'a, X, Y> {
+impl<X, Y> PartialOrd for FeatureView<'_, X, Y> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self == other {
             return Some(Ordering::Equal);
@@ -827,13 +827,13 @@ impl<'a, X, Y> PartialOrd for FeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> CoordinateLike<X> for FeatureView<'a, X, Y> {
+impl<X, Y> CoordinateLike<X> for FeatureView<'_, X, Y> {
     fn coordinate(&self) -> f64 {
         self.coordinate_x()
     }
 }
 
-impl<'a, X, Y> TimeInterval<Y> for FeatureView<'a, X, Y> {
+impl<X, Y> TimeInterval<Y> for FeatureView<'_, X, Y> {
     fn apex_time(&self) -> Option<f64> {
         self.apex_y()
     }
@@ -859,7 +859,7 @@ impl<'a, X, Y> TimeInterval<Y> for FeatureView<'a, X, Y> {
     }
 }
 
-impl<'a, X, Y> IntensityMeasurement for FeatureView<'a, X, Y> {
+impl<X, Y> IntensityMeasurement for FeatureView<'_, X, Y> {
     fn intensity(&self) -> f32 {
         self.z.iter().sum()
     }
@@ -943,13 +943,13 @@ impl<'a, X, Y> SplittableFeatureLike<'a, X, Y> for FeatureView<'a, X, Y> {
 }
 
 
-impl<'a, X, Y> TimeArray<Y> for FeatureView<'a, X, Y> {
+impl<X, Y> TimeArray<Y> for FeatureView<'_, X, Y> {
     fn time_view(&self) -> &[f64] {
         self.y
     }
 
     fn intensity_view(&self) -> &[f32] {
-        &self.z
+        self.z
     }
 }
 

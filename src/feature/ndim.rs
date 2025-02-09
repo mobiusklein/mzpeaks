@@ -223,7 +223,7 @@ pub struct NDPointMutRef<'a, const N: usize, T, Y> {
     _y: PhantomData<Y>,
 }
 
-impl<'a, const N: usize, T, Y> Index<usize> for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> Index<usize> for NDPointMutRef<'_, N, T, Y> {
     type Output = f64;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -231,7 +231,7 @@ impl<'a, const N: usize, T, Y> Index<usize> for NDPointMutRef<'a, N, T, Y> {
     }
 }
 
-impl<'a, const N: usize, T, Y> IndexMut<usize> for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> IndexMut<usize> for NDPointMutRef<'_, N, T, Y> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         self.dimensions[index]
     }
@@ -255,7 +255,7 @@ impl<'a, const N: usize, T, Y> From<NDPointMutRef<'a, N, T, Y>> for NDPoint<N, T
     }
 }
 
-impl<'a, const N: usize, T, Y> PartialEq for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> PartialEq for NDPointMutRef<'_, N, T, Y> {
     fn eq(&self, other: &Self) -> bool {
         self.dimensions == other.dimensions
             && self.time == other.time
@@ -265,7 +265,7 @@ impl<'a, const N: usize, T, Y> PartialEq for NDPointMutRef<'a, N, T, Y> {
     }
 }
 
-impl<'a, const N: usize, T, Y> PartialOrd for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> PartialOrd for NDPointMutRef<'_, N, T, Y> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match self.dimensions.partial_cmp(&other.dimensions) {
             Some(core::cmp::Ordering::Equal) => {}
@@ -287,27 +287,27 @@ impl<'a, const N: usize, T, Y> PartialOrd for NDPointMutRef<'a, N, T, Y> {
     }
 }
 
-impl<'a, const N: usize, T, Y> CoordinateLike<Y> for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> CoordinateLike<Y> for NDPointMutRef<'_, N, T, Y> {
     fn coordinate(&self) -> f64 {
         self.time
     }
 }
 
-impl<'a, const N: usize, T, Y> CoordinateLikeMut<Y> for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> CoordinateLikeMut<Y> for NDPointMutRef<'_, N, T, Y> {
     fn coordinate_mut(&mut self) -> &mut f64 {
         &mut self.time
     }
 }
 
-impl<'a, const N: usize, T, Y> IntensityMeasurement for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> IntensityMeasurement for NDPointMutRef<'_, N, T, Y> {
     fn intensity(&self) -> f32 {
         *self.intensity
     }
 }
 
-impl<'a, const N: usize, T, Y> IntensityMeasurementMut for NDPointMutRef<'a, N, T, Y> {
+impl<const N: usize, T, Y> IntensityMeasurementMut for NDPointMutRef<'_, N, T, Y> {
     fn intensity_mut(&mut self) -> &mut f32 {
-        &mut self.intensity
+        self.intensity
     }
 }
 
@@ -374,7 +374,7 @@ pub struct NDIter<'a, const N: usize, T, Y> {
     _t: PhantomData<(T, Y)>,
 }
 
-impl<'a, const N: usize, T, Y> DoubleEndedIterator for NDIter<'a, N, T, Y> {
+impl<const N: usize, T, Y> DoubleEndedIterator for NDIter<'_, N, T, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(time) = self.time_iter.next_back().copied() {
             let intensity = self.intensity_iter.next_back().copied().unwrap();
@@ -389,15 +389,15 @@ impl<'a, const N: usize, T, Y> DoubleEndedIterator for NDIter<'a, N, T, Y> {
     }
 }
 
-impl<'a, const N: usize, T, Y> FusedIterator for NDIter<'a, N, T, Y> {}
+impl<const N: usize, T, Y> FusedIterator for NDIter<'_, N, T, Y> {}
 
-impl<'a, const N: usize, T, Y> ExactSizeIterator for NDIter<'a, N, T, Y> {
+impl<const N: usize, T, Y> ExactSizeIterator for NDIter<'_, N, T, Y> {
     fn len(&self) -> usize {
         self.time_iter.len()
     }
 }
 
-impl<'a, const N: usize, T, Y> Iterator for NDIter<'a, N, T, Y> {
+impl<const N: usize, T, Y> Iterator for NDIter<'_, N, T, Y> {
     type Item = NDPoint<N, T, Y>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -437,7 +437,7 @@ pub struct NDIterMut<'a, const N: usize, T, Y> {
     _t: PhantomData<(T, Y)>,
 }
 
-impl<'a, const N: usize, T, Y> DoubleEndedIterator for NDIterMut<'a, N, T, Y> {
+impl<const N: usize, T, Y> DoubleEndedIterator for NDIterMut<'_, N, T, Y> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(time) = self.time_iter.next_back().copied() {
             let intensity = self.intensity_iter.next_back().unwrap();
@@ -449,9 +449,9 @@ impl<'a, const N: usize, T, Y> DoubleEndedIterator for NDIterMut<'a, N, T, Y> {
     }
 }
 
-impl<'a, const N: usize, T, Y> FusedIterator for NDIterMut<'a, N, T, Y> {}
+impl<const N: usize, T, Y> FusedIterator for NDIterMut<'_, N, T, Y> {}
 
-impl<'a, const N: usize, T, Y> ExactSizeIterator for NDIterMut<'a, N, T, Y> {
+impl<const N: usize, T, Y> ExactSizeIterator for NDIterMut<'_, N, T, Y> {
     fn len(&self) -> usize {
         self.time_iter.len()
     }
@@ -659,6 +659,10 @@ impl<const N: usize, T, Y> NDFeature<N, T, Y> {
         self.time.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.time.is_empty()
+    }
+
     pub(crate) fn sort_by_time(&mut self) {
         let n = self.len();
         let mut mask: Vec<_> = (0..n).collect();
@@ -776,7 +780,7 @@ pub struct IMMZPeakIter<'a> {
     iter: NDIter<'a, 2, (MZ, IonMobility), Time>,
 }
 
-impl<'a> FusedIterator for IMMZPeakIter<'a> {}
+impl FusedIterator for IMMZPeakIter<'_> {}
 
 impl<'a> ExactSizeIterator for IMMZPeakIter<'a> {
     fn len(&self) -> usize {
@@ -784,7 +788,7 @@ impl<'a> ExactSizeIterator for IMMZPeakIter<'a> {
     }
 }
 
-impl<'a> Iterator for IMMZPeakIter<'a> {
+impl Iterator for IMMZPeakIter<'_> {
     type Item = (IonMobilityAwareCentroidPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -843,7 +847,7 @@ pub struct IMMassPeakIter<'a> {
     charge: i32,
 }
 
-impl<'a> Iterator for IMMassPeakIter<'a> {
+impl Iterator for IMMassPeakIter<'_> {
     type Item = (IonMobilityAwareDeconvolutedPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1065,8 +1069,10 @@ impl<X, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + Coordina
     pub fn into_inner(self) -> F {
         self.inner
     }
+}
 
-    pub fn as_mut(&mut self) -> &mut F {
+impl<X, T, Y, F: NDFeatureLike<T, Y> + TimeInterval<Y> + TimeArray<Y> + CoordinateLike<X>> AsMut<F> for NDFeatureAdapter<X, T, Y, F> {
+    fn as_mut(&mut self) -> &mut F {
         &mut self.inner
     }
 }
@@ -1113,7 +1119,7 @@ where
     NDFeature<N, T, Y>: CoordinateLike<T0>,
 {
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
-        super::feature::IterMut::<T0, Y>::from_parts(
+        super::base::IterMut::<T0, Y>::from_parts(
             self.inner.dimensions[0].iter_mut(),
             self.inner.time.iter_mut(),
             self.inner.intensity.iter_mut(),
@@ -1121,18 +1127,22 @@ where
     }
 
     fn push<P: CoordinateLike<T0> + IntensityMeasurement>(&mut self, pt: &P, time: f64) {
-        let mut raw_pt = NDPoint::default();
-        raw_pt.time = time;
+        let mut raw_pt = NDPoint {
+            time,
+            intensity: pt.intensity(),
+            ..Default::default()
+        };
         raw_pt.dimensions[0] = pt.coordinate();
-        raw_pt.intensity = pt.intensity();
         self.inner.push_raw(raw_pt);
     }
 
     fn push_raw(&mut self, x: f64, y: f64, z: f32) {
-        let mut raw_pt = NDPoint::default();
-        raw_pt.time = y;
+        let mut raw_pt = NDPoint {
+            time: y,
+            intensity: z,
+            ..Default::default()
+        };
         raw_pt.dimensions[0] = x;
-        raw_pt.intensity = z;
         self.inner.push_raw(raw_pt);
     }
 }
@@ -1144,7 +1154,7 @@ where
 {
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
         let (inner, _) = self.inner.as_mut();
-        super::feature::IterMut::<T0, Y>::from_parts(
+        super::base::IterMut::<T0, Y>::from_parts(
             inner.dimensions[0].iter_mut(),
             inner.time.iter_mut(),
             inner.intensity.iter_mut(),
@@ -1152,18 +1162,22 @@ where
     }
 
     fn push<P: CoordinateLike<T0> + IntensityMeasurement>(&mut self, pt: &P, time: f64) {
-        let mut raw_pt = NDPoint::default();
-        raw_pt.time = time;
+        let mut raw_pt = NDPoint{
+            time,
+            intensity: pt.intensity(),
+            ..Default::default()
+        };
         raw_pt.dimensions[0] = pt.coordinate();
-        raw_pt.intensity = pt.intensity();
         self.inner.as_mut().0.push_raw(raw_pt);
     }
 
     fn push_raw(&mut self, x: f64, y: f64, z: f32) {
-        let mut raw_pt = NDPoint::default();
-        raw_pt.time = y;
+        let mut raw_pt = NDPoint{
+            time: y,
+            intensity: z,
+            ..Default::default()
+        };
         raw_pt.dimensions[0] = x;
-        raw_pt.intensity = z;
         self.inner.as_mut().0.push_raw(raw_pt);
     }
 }

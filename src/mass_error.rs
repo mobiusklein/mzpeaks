@@ -62,11 +62,11 @@ pub enum Tolerance {
     Da(f64)
 }
 
-impl ToString for Tolerance {
-    fn to_string(&self) -> String {
+impl Display for Tolerance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Da(tol) => format!("{}Da", tol),
-            Self::PPM(tol) => format!("{}PPM", tol),
+            Self::Da(tol) => write!(f, "{}Da", tol),
+            Self::PPM(tol) => write!(f, "{}PPM", tol),
         }
     }
 }

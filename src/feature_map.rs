@@ -99,10 +99,10 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
     /// Return the feature nearest to `query` within `error_tolerance` in
     /// this feature collection, or `None`.
     fn has_feature(&self, query: f64, error_tolerance: Tolerance) -> Option<&T> {
-        return match self.search(query, error_tolerance) {
+        match self.search(query, error_tolerance) {
             Some(j) => Some(self.get_item(j)),
             None => None,
-        };
+        }
     }
 
     #[inline]
@@ -206,7 +206,7 @@ pub trait FeatureMapLike<X, Y, T: FeatureLike<X, Y>>: ops::Index<usize, Output =
     /// Find all features which could match `query` within `error_tolerance` units
     fn all_features_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
         let c = self.all_indices_for(query, error_tolerance);
-        return self.get_slice(c);
+        self.get_slice(c)
     }
 }
 
@@ -550,7 +550,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMapView<'a, X, Y, T> {
     }
 }
 
-impl<'a, X, Y, T: FeatureLike<X, Y>> ops::Index<usize> for FeatureMapView<'a, X, Y, T> {
+impl<X, Y, T: FeatureLike<X, Y>> ops::Index<usize> for FeatureMapView<'_, X, Y, T> {
     type Output = T;
 
     fn index(&self, i: usize) -> &Self::Output {
@@ -560,7 +560,7 @@ impl<'a, X, Y, T: FeatureLike<X, Y>> ops::Index<usize> for FeatureMapView<'a, X,
 
 impl_slicing!(FeatureMapView<'a, X, Y, T>, 'a, X, Y, T: FeatureLike<X, Y>);
 
-impl<'a, X, Y, T: FeatureLike<X, Y>> FeatureMapLike<X, Y, T> for FeatureMapView<'a, X, Y, T> {
+impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLike<X, Y, T> for FeatureMapView<'_, X, Y, T> {
     fn search_by(&self, query: f64) -> Result<usize, usize> {
         self.search_by(query)
     }
@@ -679,10 +679,10 @@ pub trait NDFeatureMapLike<X, Y, T: NDFeatureLike<X, Y> + PartialOrd>:
     /// Return the feature nearest to `query` within `error_tolerance` in
     /// this feature collection, or `None`.
     fn has_feature(&self, query: f64, error_tolerance: Tolerance) -> Option<&T> {
-        return match self.search(query, error_tolerance) {
+        match self.search(query, error_tolerance) {
             Some(j) => Some(self.get_item(j)),
             None => None,
-        };
+        }
     }
 
     #[inline]
@@ -786,7 +786,7 @@ pub trait NDFeatureMapLike<X, Y, T: NDFeatureLike<X, Y> + PartialOrd>:
     /// Find all features which could match `query` within `error_tolerance` units
     fn all_features_for(&self, query: f64, error_tolerance: Tolerance) -> &[T] {
         let c = self.all_indices_for(query, error_tolerance);
-        return self.get_slice(c);
+        self.get_slice(c)
     }
 }
 
@@ -912,6 +912,6 @@ mod test {
         assert!(p.is_none());
 
         let p = features.all_features_for(500.0, Tolerance::Da(1.0));
-        assert!(p.len() == 0);
+        assert!(p.is_empty());
     }
 }
