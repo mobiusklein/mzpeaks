@@ -12,6 +12,8 @@ mod simple;
 mod traits;
 mod util;
 
+pub use util::NonNan;
+
 pub use traits::{
     AsPeakIter, BuildFromPeak, FeatureLike, FeatureLikeMut, NDFeatureLike,
     NDFeatureLikeMut, PeakSeries, SplittableFeatureLike, TimeArray, TimeInterval,

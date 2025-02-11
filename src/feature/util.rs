@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 #[derive(PartialEq)]
-pub(crate) struct NonNan(f64);
+pub struct NonNan(f64);
 
 impl NonNan {
     pub fn new(val: f64) -> Option<NonNan> {

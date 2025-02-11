@@ -5,13 +5,65 @@
 //!
 
 use crate::{
-    feature::{FeatureLike, NDFeatureLike},
+    feature::{FeatureLike, NDFeatureLike, NonNan},
     CoordinateLike, Tolerance,
 };
 use std::{
     marker::PhantomData,
     ops::{self, Range},
 };
+
+struct FeatureSort<'a, X, Y, F: FeatureLike<X, Y>> {
+    feature: &'a F,
+    coordinate: f64,
+    start_time: Option<f64>,
+    _d: PhantomData<(X, Y)>,
+}
+
+impl<X, Y, F: FeatureLike<X, Y>> Eq for FeatureSort<'_, X, Y, F> {}
+
+impl<X, Y, F: FeatureLike<X, Y>> Ord for FeatureSort<'_, X, Y, F> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.coordinate.total_cmp(&other.coordinate) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match (self.start_time, other.start_time) {
+            (Some(a), Some(b)) => {
+                match a.total_cmp(&b) {
+                    std::cmp::Ordering::Equal => self.feature.partial_cmp(other.feature).unwrap_or(std::cmp::Ordering::Equal),
+                    x => x,
+                }
+
+            },
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, None) => {
+                self.feature.partial_cmp(other.feature).unwrap_or(std::cmp::Ordering::Equal)
+            }
+        }
+    }
+}
+
+impl<X, Y, F: FeatureLike<X, Y>> PartialOrd for FeatureSort<'_, X, Y, F> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<X, Y, F: FeatureLike<X, Y>> PartialEq for FeatureSort<'_, X, Y, F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.coordinate == other.coordinate && self.start_time == other.start_time && self.feature == other.feature
+    }
+}
+
+impl<X, Y, F: FeatureLike<X, Y>> FeatureSort<'_, X, Y, F> {
+    fn new(feature: &F) -> FeatureSort<'_, X, Y, F> {
+        let coordinate = feature.coordinate();
+        let start_time = feature.start_time();
+        FeatureSort { feature, coordinate, start_time, _d: PhantomData }
+    }
+}
 
 /// A two dimensional feature collection where features are sorted by the `X` dimension
 /// and each feature is internally sorted by the `Y` dimension.
@@ -295,8 +347,9 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
     }
 
     pub fn search_by(&self, query: f64) -> Result<usize, usize> {
+        let q = NonNan::new(query).ok_or(0usize)?;
         self.features
-            .binary_search_by(|feature| feature.coordinate().partial_cmp(&query).unwrap())
+            .binary_search_by_key(&q, |feature| NonNan::new(feature.coordinate()).unwrap())
     }
 
     /// Extract a subset of this [`FeatureMap`] that overlap the specified `y` coordinate
@@ -387,7 +440,27 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMapLikeMut<X, Y, T> for FeatureMap<X, Y,
     }
 
     fn sort(&mut self) {
-        self.features.sort_by(|x, y| x.partial_cmp(y).unwrap())
+        let n = self.len();
+        let decorate: Vec<_> = self.features.iter().map(FeatureSort::new).collect();
+        let mut indices: Vec<_> = (0..n).collect();
+        indices.sort_by(|i, j| decorate[*i].cmp(&decorate[*j]));
+
+        const TOMBSTONE: usize = usize::MAX;
+
+        for idx in 0..n {
+            if indices[idx] != TOMBSTONE {
+                let mut current_idx = idx;
+                loop {
+                    let next_idx = indices[current_idx];
+                    indices[current_idx] = TOMBSTONE;
+                    if indices[next_idx] == TOMBSTONE {
+                        break;
+                    }
+                    self.features.swap(current_idx, next_idx);
+                    current_idx = next_idx;
+                }
+            }
+        }
     }
 }
 

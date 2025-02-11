@@ -244,8 +244,6 @@ impl<X, Y> PartialEq for Feature<X, Y> {
         self.x == other.x
             && self.y == other.y
             && self.z == other.z
-            && self._x == other._x
-            && self._y == other._y
     }
 }
 
