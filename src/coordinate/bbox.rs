@@ -544,7 +544,7 @@ impl<
         }
 
         while let Some((i, node)) = queue.pop_front() {
-            if node.contains_interval(item) {
+            if node.overlaps(item) {
                 queue.extend(
                     node.children
                         .into_iter()
