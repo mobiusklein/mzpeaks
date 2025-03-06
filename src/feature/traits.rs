@@ -225,21 +225,71 @@ pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
     }
 }
 
+#[cfg(target_arch = "x86_64")]
+pub(crate) mod avx_impl {
+    pub(crate) fn weighted_average_avx(x: &[f64], w: &[f32]) -> f64 {
+        let mut xchunk = x.chunks_exact(4);
+        let mut wchunk = w.chunks_exact(4);
+
+        unsafe {
+            use std::arch::x86_64::*;
+
+            let mut acc: __m256d = _mm256_broadcast_sd(&0.0);
+            let mut norm: __m256d = _mm256_broadcast_sd(&0.0);
+
+            for (xc, wc) in xchunk.by_ref().zip(wchunk.by_ref()) {
+                let xc_v = _mm256_loadu_pd(xc.as_ptr());
+                let wc_v = _mm256_cvtps_pd(_mm_loadu_ps(wc.as_ptr()));
+                acc = _mm256_fmadd_pd(xc_v, wc_v, acc);
+                norm = _mm256_add_pd(wc_v, norm)
+            }
+
+            let tmp = _mm256_hadd_pd(acc, norm);
+            let sum_high = _mm256_extractf128_pd(tmp, 1);
+            let sum = _mm_add_pd(sum_high, _mm256_extractf128_pd(tmp, 0));
+            let mut acc_t = _mm_cvtsd_f64(sum);
+            let mut norm_t = _mm_cvtsd_f64(_mm_unpackhi_pd(sum, sum));
+
+            for (xs, ws) in xchunk.remainder().iter().zip(wchunk.remainder()) {
+                let ws = *ws as f64;
+                acc_t = xs.mul_add(ws, acc_t);
+                norm_t += ws;
+            }
+
+            if norm_t == 0.0 {
+                return 0.0;
+            }
+            acc_t / norm_t
+        }
+    }
+}
+
+fn weighted_average_ref(x: &[f64], w: &[f32]) -> f64 {
+    let (acc, norm) = x
+        .iter()
+        .zip(w.iter())
+        .fold((0.0, 0.0), |(acc, norm), (x, z)| {
+            let z = *z as f64;
+            let norm = norm + z;
+            let acc = x.mul_add(z, acc);
+            (acc, norm)
+        });
+    if norm == 0.0 {
+        return 0.0;
+    }
+    acc / norm
+}
+
 pub(crate) trait CoArrayOps {
     fn weighted_average(&self, x: &[f64], w: &[f32]) -> f64 {
-        let (acc, norm) = x
-            .iter()
-            .zip(w.iter())
-            .fold((0.0, 0.0), |(acc, norm), (x, z)| {
-                let z = *z as f64;
-                let norm = norm + z;
-                let acc = x.mul_add(z, acc);
-                (acc, norm)
-            });
-        if norm == 0.0 {
-            return 0.0;
+        #[cfg(target_arch = "x86_64")]
+        if std::arch::is_x86_feature_detected!("avx") && x.len() > 8 {
+            avx_impl::weighted_average_avx(x, w)
+        } else {
+            weighted_average_ref(x, w)
         }
-        acc / norm
+        #[cfg(not(target_arch = "x86_64"))]
+        weighted_average_ref(x, w)
     }
 
     fn trapezoid_integrate(&self, y: &[f64], w: &[f32]) -> f32 {
