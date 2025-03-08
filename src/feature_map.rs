@@ -328,6 +328,11 @@ impl<X, Y, T: FeatureLike<X, Y>> FeatureMap<X, Y, T> {
         }
     }
 
+    /// Unwraps the feature map, returning the underlying storage `Vec`
+    pub fn into_inner(self) -> Vec<T> {
+        self.features
+    }
+
     pub fn len(&self) -> usize {
         self.features.len()
     }
@@ -468,6 +473,18 @@ impl<X, Y, T: FeatureLike<X, Y>> FromIterator<T> for FeatureMap<X, Y, T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let items = iter.into_iter().collect();
         Self::new(items)
+    }
+}
+
+impl<X, Y, T: FeatureLike<X, Y>> From<Vec<T>> for FeatureMap<X, Y, T> {
+    fn from(value: Vec<T>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<X, Y, T: FeatureLike<X, Y>> From<FeatureMap<X, Y, T>> for Vec<T> {
+    fn from(value: FeatureMap<X, Y, T>) -> Self {
+        value.into_inner()
     }
 }
 

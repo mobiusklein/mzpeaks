@@ -661,6 +661,10 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
         self.peaks.push(peak);
     }
 
+    pub fn into_inner(self) -> Vec<P> {
+        self.peaks
+    }
+
     pub fn as_slice(&self) -> &[P] {
         self.peaks.as_slice()
     }
@@ -823,6 +827,12 @@ impl<P: IndexedCoordinate<C>, C> PartialEq for PeakSetVec<P, C> {
 impl<P: IndexedCoordinate<C>, C> From<Vec<P>> for PeakSetVec<P, C> {
     fn from(v: Vec<P>) -> PeakSetVec<P, C> {
         PeakSetVec::wrap(v)
+    }
+}
+
+impl<P: IndexedCoordinate<C>, C> From<PeakSetVec<P, C>> for Vec<P> {
+    fn from(value: PeakSetVec<P, C>) -> Self {
+        value.peaks
     }
 }
 
