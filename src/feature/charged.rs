@@ -49,6 +49,10 @@ where
     fn clear(&mut self) {
         self.feature.clear();
     }
+
+    fn reserve(&mut self, capacity: usize) {
+        self.feature.reserve(capacity);
+    }
 }
 
 impl<X, Y> TimeInterval<Y> for ChargedFeature<X, Y>
@@ -131,8 +135,18 @@ impl<X, Y> ChargedFeature<X, Y> {
         self.feature.iter()
     }
 
+    /// Create an iterator that yields (x, y, intensity) mutable references
+    ///
+    /// NOTE: This iterator grants mutable access to the mass and time domains
+    /// of a [`Feature`], but it is the responsibility of the caller to ensure
+    /// that the time domain remains sorted.
     pub fn iter_mut(&mut self) -> IterMut<'_, X, Y> {
         self.feature.iter_mut()
+    }
+
+    /// Like [`Vec::drain`] over the [`Feature`]'s dimensions.
+    pub fn drain(&mut self) -> impl Iterator<Item = (f64, f64, f32)> + '_ {
+        self.feature.drain()
     }
 
     pub fn as_view(&self) -> ChargedFeatureView<'_, X, Y> {

@@ -363,6 +363,11 @@ impl<X, Y> FeatureLikeMut<X, Y> for SimpleFeature<X, Y> {
         self.y.clear();
         self.z.clear();
     }
+
+    fn reserve(&mut self, capacity: usize) {
+        self.y.reserve(capacity);
+        self.z.reserve(capacity);
+    }
 }
 
 /// A non-owning version of [`SimpleFeature`]

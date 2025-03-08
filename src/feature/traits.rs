@@ -199,6 +199,13 @@ pub trait FeatureLikeMut<X, Y>: FeatureLike<X, Y> {
         unimplemented!()
     }
 
+    /// Optimistically reserve additional space for `capacity` entries in
+    /// the underlying storage.
+    ///
+    /// **NOTE**: If not provided, this will do nothing and capacity will remain unchanged.
+    #[allow(unused)]
+    fn reserve(&mut self, capacity: usize) {}
+
     /// Get a mutable reference to feature data at a specified index
     fn at_mut(&mut self, index: usize) -> Option<(&mut f64, f64, &mut f32)> {
         self.iter_mut().nth(index).map(|(x, y, z)| (x, *y, z))

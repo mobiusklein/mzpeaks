@@ -175,8 +175,21 @@ impl<X, Y> Feature<X, Y> {
     }
 
     /// Create an iterator that yields (x, y, intensity) mutable references
+    ///
+    /// NOTE: This iterator grants mutable access to the mass and time domains
+    /// of a [`Feature`], but it is the responsibility of the caller to ensure
+    /// that the time domain remains sorted.
     pub fn iter_mut(&mut self) -> IterMut<'_, X, Y> {
         IterMut::new(self)
+    }
+
+    /// Like [`Vec::drain`] over the [`Feature`]'s dimensions.
+    pub fn drain(&mut self) -> impl Iterator<Item=(f64, f64, f32)> + '_ {
+        let x = self.x.drain(..);
+        let y = self.y.drain(..);
+        let z = self.z.drain(..);
+
+        x.zip(y).zip(z).map(|((x, y), z)| (x, y, z))
     }
 
     pub fn as_view(&self) -> FeatureView<'_, X, Y> {
@@ -361,6 +374,12 @@ where
         self.push_raw(x, y, z)
     }
 
+    fn reserve(&mut self, additional: usize) {
+        self.x.reserve(additional);
+        self.y.reserve(additional);
+        self.z.reserve(additional);
+    }
+
     fn clear(&mut self) {
         self.x.clear();
         self.y.clear();
@@ -493,6 +512,10 @@ impl<Y> FusedIterator for MZPeakIter<'_, Y> {}
 
 /// An iterator producing mutable references to feature data
 /// as owned by [`Feature`].
+///
+/// NOTE: This iterator grants mutable access to the mass and time domains
+/// of a [`Feature`], but it is the responsibility of the caller to ensure
+/// that the time domain remains sorted.
 pub struct IterMut<'a, X, Y> {
     xiter: slice::IterMut<'a, f64>,
     yiter: slice::IterMut<'a, f64>,
