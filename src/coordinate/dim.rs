@@ -310,6 +310,8 @@ macro_rules! impl_has_proximity_exact {
     };
 }
 
+impl_has_proximity_exact!(i8);
+impl_has_proximity_exact!(i16);
 impl_has_proximity_exact!(i32);
 impl_has_proximity_exact!(i64);
 
@@ -321,6 +323,15 @@ impl<T: HasProximity> HasProximity for Option<T> {
         }
     }
 }
+
+impl HasProximity for u8 {}
+impl HasProximity for u16 {}
+impl HasProximity for u32 {}
+impl HasProximity for u64 {}
+
+impl HasProximity for usize {}
+impl HasProximity for isize {}
+
 
 #[cfg(test)]
 mod test {
