@@ -975,6 +975,8 @@ impl<V: Real + Sum + HasProximity, T: Span1D<DimType = V>, Q: Span1D<DimType = V
 mod test {
     use std::collections::HashSet;
 
+    use serde::{Deserialize, Serialize};
+
     use super::*;
 
     #[test]
@@ -1097,6 +1099,82 @@ mod test {
             .overlaps_iter_mut(SimpleInterval::new(tree.start(), tree.end()))
             .count();
         assert_eq!(tree.iter().flatten().count(), n);
+    }
+
+    #[test]
+    fn test_iv_tree_from_csv() -> std::io::Result<()> {
+        let mut reader = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_path("test/data/time_intervals.csv")?;
+        #[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq)]
+        struct Page {
+            row_group_i: usize,
+            page_i: usize,
+            min: f32,
+            max: f32,
+            start_row: usize,
+            end_row: usize,
+        }
+
+        impl PartialOrd for Page {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                match self.min.total_cmp(&other.min) {
+                    core::cmp::Ordering::Equal => {}
+                    ord => return Some(ord),
+                }
+                match self.max.total_cmp(&other.max) {
+                    core::cmp::Ordering::Equal => {}
+                    ord => return Some(ord),
+                }
+                match self.row_group_i.partial_cmp(&other.row_group_i) {
+                    Some(core::cmp::Ordering::Equal) => {}
+                    ord => return ord,
+                }
+                match self.page_i.partial_cmp(&other.page_i) {
+                    Some(core::cmp::Ordering::Equal) => {}
+                    ord => return ord,
+                }
+                match self.start_row.partial_cmp(&other.start_row) {
+                    Some(core::cmp::Ordering::Equal) => {}
+                    ord => return ord,
+                }
+                self.end_row.partial_cmp(&other.end_row)
+            }
+        }
+
+        impl Span1D for Page {
+            type DimType = f32;
+
+            fn start(&self) -> Self::DimType {
+                self.min
+            }
+
+            fn end(&self) -> Self::DimType {
+                self.max
+            }
+        }
+
+        let pages: Vec<Page> = reader.deserialize::<Page>().flatten().collect();
+        let pages_tree = IntervalTree::new(pages.clone());
+
+        let query = SimpleInterval::new(20.0, 21.0);
+        let mut pages_in = pages_tree.overlaps(&query);
+        pages_in.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+        let pages_in_scan: Vec<_> = pages.iter().filter(|p| p.overlaps(&query)).collect();
+        assert_eq!(pages_in.len(), pages_in_scan.len());
+
+        for (a, b) in pages_in.iter().zip(pages_in_scan.iter()) {
+            assert_eq!(a, b);
+        }
+
+        let pages_in_scan: Vec<_> = pages.iter().filter(|p| query.overlaps(&p)).collect();
+        assert_eq!(pages_in.len(), pages_in_scan.len());
+
+        for (a, b) in pages_in.iter().zip(pages_in_scan.iter()) {
+            assert_eq!(a, b);
+        }
+
+        Ok(())
     }
 
     #[test]
