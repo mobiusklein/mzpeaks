@@ -645,7 +645,7 @@ impl PyPeakSet {
     }
 }
 
-#[pyclass(module = "pymzpeaks", sequence, name = "PeakSet")]
+#[pyclass(module = "pymzpeaks", sequence, name = "DeconvolutedPeakSet")]
 #[derive(Debug, Clone)]
 pub struct PyDeconvolutedPeakSet(PeakSetVec<PyDeconvolutedPeak, Mass>);
 
