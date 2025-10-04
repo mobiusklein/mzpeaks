@@ -640,7 +640,7 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     }
 
     /// Iterate over references to peaks
-    pub fn iter(&self) -> PeakSetIter<P> {
+    pub fn iter(&self) -> PeakSetIter<'_, P> {
         self.peaks.iter()
     }
 
@@ -653,7 +653,7 @@ impl<P: IndexedCoordinate<C>, C> PeakSetVec<P, C> {
     }
 
     /// Iterate over mutable references to peaks
-    pub fn iter_mut(&mut self) -> PeakSetIterMut<P> {
+    pub fn iter_mut(&mut self) -> PeakSetIterMut<'_, P> {
         self.peaks.iter_mut()
     }
 

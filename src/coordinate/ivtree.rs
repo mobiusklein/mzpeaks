@@ -441,7 +441,7 @@ impl<'members, V: Real + Sum + HasProximity, T: Span1D<DimType = V>> IntervalTre
         self.nodes = new.nodes;
     }
 
-    pub fn iter(&self) -> PreorderIter<V, T> {
+    pub fn iter(&self) -> PreorderIter<'_, V, T> {
         PreorderIter::new(self)
     }
 
