@@ -339,7 +339,7 @@ impl PyPeakRef {
         }
     }
 
-    #[setter]
+    #[setter(mz)]
     fn mz_setter(&mut self, val: f64) -> PyResult<()> {
         match &mut self.0 {
             CentroidPeakOrRef::Peak(peak) => {
@@ -348,8 +348,15 @@ impl PyPeakRef {
             }
             CentroidPeakOrRef::Ref { index, peak_set } => match peak_set.as_ref().write() {
                 Ok(mut peaks) => {
+                    // Update mz at current index, then resort and refresh our reference index
                     peaks.deref_mut().index_mut(*index).0.mz = val;
                     peaks.sort();
+                    // Find the new index for this mz value
+                    let new_index = match PeakCollection::search_by(&*peaks, val) {
+                        Ok(j) => j,
+                        Err(j) => j.saturating_sub(0),
+                    };
+                    *index = new_index;
                     Ok(())
                 }
                 Err(err) => Err(PyValueError::new_err(format!(
@@ -374,7 +381,7 @@ impl PyPeakRef {
         }
     }
 
-    #[setter]
+    #[setter(intensity)]
     fn intensity_setter(&mut self, val: f32) -> PyResult<()> {
         match &mut self.0 {
             CentroidPeakOrRef::Peak(peak) => {
@@ -408,7 +415,7 @@ impl PyPeakRef {
         }
     }
 
-    #[setter]
+    #[setter(index)]
     fn index_setter(&mut self, val: u32) -> PyResult<()> {
         match &mut self.0 {
             CentroidPeakOrRef::Peak(peak) => {
@@ -645,7 +652,7 @@ impl PyPeakSet {
     }
 }
 
-#[pyclass(module = "pymzpeaks", sequence, name = "PeakSet")]
+#[pyclass(module = "pymzpeaks", sequence, name = "DeconvolutedPeakSet")]
 #[derive(Debug, Clone)]
 pub struct PyDeconvolutedPeakSet(PeakSetVec<PyDeconvolutedPeak, Mass>);
 
